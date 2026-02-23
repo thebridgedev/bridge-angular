@@ -1,0 +1,21 @@
+services:
+  bridge-angular:
+    container_name: bridge-angular
+    image: bridge-angular:dev
+    build:
+      target: dev
+      context: ./
+      dockerfile: ./Dockerfile
+    volumes:
+      - ./:/home/bridgeuser/app
+    restart: unless-stopped
+    stdin_open: true
+    tty: true
+    ports:
+      - "3008:3001"
+    networks:
+      - bridge
+
+networks:
+  bridge:
+    driver: bridge

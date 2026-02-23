@@ -1,0 +1,97 @@
+# Compiled output
+**/dist
+**/tmp
+**/out-tsc
+**/bazel-out
+
+# Node
+**/node_modules
+npm-debug.log
+yarn-error.log
+
+# IDEs and editors
+.idea/
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/*
+
+# Angular cache
+**/.angular/cache
+.angular/
+
+# Install test
+install-test-tmp/
+install-test-pkg.tgz
+
+# Miscellaneous
+.sass-cache/
+/connect.lock
+/coverage
+/libpeerconnection.log
+testem.log
+/typings
+
+# System files
+.DS_Store
+Thumbs.db
+.cache
+.node_repl_history
+.cursor-server
+.config
+.dotnet/
+.npm/
+.vscode-server/
+.pki
+.ssh/
+.npmrc
+.local
+
+.next
+.turbo
+.bash_history
+.bun
+.cursor
+.env*
+
+**/node_modules
+
+# Output
+**/.output
+**/.vercel
+**/.netlify
+**/*.js.timestamp-*
+**/*.ts.timestamp-*
+
+# OS
+**/.DS_Store
+**/Thumbs.db
+
+# Env
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.test
+!**/.env.test.local.example
+
+**/*.tgz
+**/*.tar.*
+
+project_descriptions/*
+
+# Playwright
+e2e/playwright/.auth/
+test-reports/
+
+# Angular build
+**/dist/

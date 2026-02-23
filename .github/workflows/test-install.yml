@@ -1,0 +1,37 @@
+# Test that the packed package installs cleanly with Angular 19
+name: Test install
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  install-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build and pack package
+        run: |
+          cd bridge-angular
+          npm install
+          npm run build
+          npm pack --destination ../
+          mv ../nebulr-group-bridge-angular-*.tgz ../install-test-pkg.tgz
+
+      - name: Install with Angular 19
+        run: |
+          mkdir -p install-test
+          cd install-test
+          npm init -y
+          npm install @angular/core@^19 @angular/common@^19 @angular/router@^19 @angular/platform-browser@^19
+          npm install ../install-test-pkg.tgz
+          echo "Install succeeded"

@@ -1,0 +1,26 @@
+{
+  "name": "bridge-angular-workspace",
+  "private": true,
+  "workspaces": [
+    "bridge-angular",
+    "demo"
+  ],
+  "scripts": {
+    "build": "npm run --workspace=demo build",
+    "build:bridge": "npm run --workspace=@nebulr-group/bridge-angular build",
+    "dev": "npm run --workspace=demo start",
+    "package": "npm run --workspace=@nebulr-group/bridge-angular package",
+    "test:e2e": "npx tsx e2e/playwright/pre-setup.ts test.local && PLAYWRIGHT_PROJECT_NAME=local npx playwright test --project=local",
+    "test:e2e:stage": "npx tsx e2e/playwright/pre-setup.ts test.stage && PLAYWRIGHT_PROJECT_NAME=stage npx playwright test --project=stage",
+    "test:e2e:prod": "npx tsx e2e/playwright/pre-setup.ts test.prod && PLAYWRIGHT_PROJECT_NAME=prod npx playwright test --project=prod",
+    "test:e2e:headed": "npx tsx e2e/playwright/pre-setup.ts test.local && PLAYWRIGHT_PROJECT_NAME=local PLAYWRIGHT_HEADED=true npx playwright test --project=local",
+    "test:e2e:report": "npx playwright show-report test-reports/playwright-report",
+    "test:install": "bash scripts/test-install.sh"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "@types/node": "^22.0.0",
+    "dotenv": "^16.0.0",
+    "tsx": "^4.0.0"
+  }
+}

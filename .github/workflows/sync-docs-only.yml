@@ -1,0 +1,27 @@
+name: Sync Docs (Manual + Auto)
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches: [main]
+    paths:
+      - "learning/**/*.md"
+      - "learning/**/*.mdx"
+      - "README.md"
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: 🔄 Sync Learning Docs to Bridge Web
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v4
+
+      - name: 🔄 Sync Docs
+        run: echo "Docs sync not yet configured for bridge-angular"
+        env:
+          DOCS_SYNC_KEY: ${{ secrets.DOCS_SYNC_KEY }}

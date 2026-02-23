@@ -1,0 +1,42 @@
+{
+  "name": "@nebulr-group/bridge-angular",
+  "version": "0.1.0",
+  "description": "Bridge Angular library. Adds Bridge authentication, feature flags, and payments to your Angular application.",
+  "author": "Iman Pouya",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thebridgedev/bridge-angular.git"
+  },
+  "bugs": {
+    "url": "https://github.com/thebridgedev/bridge-angular/issues"
+  },
+  "homepage": "https://thebridge.dev",
+  "scripts": {
+    "build": "ng-packagr -p ng-package.json",
+    "package": "npm run build && cd dist && npm pack --pack-destination ../"
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "jose": "^6.0.10",
+    "tslib": "^2.3.0"
+  },
+  "peerDependencies": {
+    "@angular/common": "^19.0.0",
+    "@angular/core": "^19.0.0",
+    "@angular/platform-browser": "^19.0.0",
+    "@angular/router": "^19.0.0"
+  },
+  "devDependencies": {
+    "@angular/compiler": "^19.0.0",
+    "@angular/compiler-cli": "^19.0.0",
+    "@angular/core": "^19.0.0",
+    "@angular/common": "^19.0.0",
+    "@angular/platform-browser": "^19.0.0",
+    "@angular/router": "^19.0.0",
+    "ng-packagr": "^19.0.0",
+    "typescript": "~5.6.0",
+    "zone.js": "~0.15.0"
+  },
+  "keywords": ["angular", "bridge", "nebulr", "auth", "feature-flags", "payments", "saas"]
+}

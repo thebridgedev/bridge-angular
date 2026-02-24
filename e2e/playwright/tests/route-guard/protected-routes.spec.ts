@@ -53,7 +53,7 @@ test.describe('Protected Routes', () => {
     await page.waitForLoadState('networkidle');
 
     await expect(
-      page.locator('p').filter({ hasText: testUser.email }),
+      page.locator('p').filter({ hasText: 'Email:' }).filter({ hasText: testUser.email }),
     ).toBeVisible({ timeout: LONG_TIMEOUT });
   });
 });

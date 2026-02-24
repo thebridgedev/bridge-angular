@@ -24,8 +24,9 @@ jobs:
           cd bridge-angular
           npm install
           npm run build
-          npm pack --destination ../
-          mv ../nebulr-group-bridge-angular-*.tgz ../install-test-pkg.tgz
+          cd dist
+          npm pack
+          mv nebulr-group-bridge-angular-*.tgz ../../install-test-pkg.tgz
 
       - name: Install with Angular 19
         run: |

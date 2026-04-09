@@ -32,11 +32,6 @@ on:
         required: false
         default: 'npm run build'
         type: string
-      publish-command:
-        description: Command used to publish the package
-        required: false
-        default: 'npm publish --provenance --access public'
-        type: string
       package-name:
         description: Optional npm package name (falls back to package.json name if omitted)
         required: false
@@ -148,20 +143,15 @@ jobs:
       - name: 🚀 Publish package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.npm-token }}
-          PUBLISH_COMMAND: ${{ inputs.publish-command }}
           DIST_TAG: ${{ env.DIST_TAG }}
         working-directory: ${{ inputs.working-directory }}
         run: |
-          if [ -z "$PUBLISH_COMMAND" ]; then
-            if [ "$DIST_TAG" = "latest" ]; then
-              npm publish --provenance --access public
-            else
-              npm publish --provenance --access public --tag "$DIST_TAG"
-            fi
+          if [ "$DIST_TAG" = "latest" ]; then
+            echo "Publishing with dist-tag: latest"
+            npm publish --provenance --access public
           else
-            printf '%s\n' "$PUBLISH_COMMAND" > .publish-command.sh
-            chmod +x .publish-command.sh
-            bash .publish-command.sh
+            echo "Publishing with dist-tag: $DIST_TAG"
+            npm publish --provenance --access public --tag "$DIST_TAG"
           fi
 
       - name: ✨ Create GitHub Release

@@ -42,9 +42,6 @@ on:
         default: true
         type: boolean
     secrets:
-      npm-token:
-        description: Token used to publish the package to npm
-        required: true
       docs-sync-key:
         description: SSH key used to sync documentation
         required: false
@@ -94,13 +91,6 @@ jobs:
           ${{ inputs.install-command }}
           ${{ inputs.build-command }}
 
-      - name: 🔐 Configure npm auth
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.npm-token }}
-        run: |
-          npm config set //registry.npmjs.org/:_authToken=$NODE_AUTH_TOKEN
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
-
       - name: 🛑 Pre-publish validation
         env:
           INPUT_PACKAGE_NAME: ${{ inputs.package-name }}
@@ -142,7 +132,6 @@ jobs:
 
       - name: 🚀 Publish package
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.npm-token }}
           DIST_TAG: ${{ env.DIST_TAG }}
         working-directory: ${{ inputs.working-directory }}
         run: |

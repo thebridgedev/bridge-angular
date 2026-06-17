@@ -66,7 +66,10 @@ test.describe('Login & Logout Flow', () => {
     await page.waitForLoadState('networkidle');
 
     const hasTokens = await page.evaluate(() => {
-      const raw = localStorage.getItem('bridge_tokens');
+      const __k = Object.keys(localStorage).find(
+        (k) => k === 'bridge_tokens' || k.startsWith('bridge_tokens:'),
+      );
+      const raw = __k ? localStorage.getItem(__k) : null;
       if (!raw) return false;
       try {
         const tokens = JSON.parse(raw);
@@ -90,7 +93,10 @@ test.describe('Login & Logout Flow', () => {
       await loginViaBridgeAuth(page, testUser.email, testUser.password, envConfig);
 
       const tokenData = await page.evaluate(() => {
-        const raw = localStorage.getItem('bridge_tokens');
+        const __k = Object.keys(localStorage).find(
+          (k) => k === 'bridge_tokens' || k.startsWith('bridge_tokens:'),
+        );
+        const raw = __k ? localStorage.getItem(__k) : null;
         if (!raw) return null;
         try {
           return JSON.parse(raw);

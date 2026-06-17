@@ -24,19 +24,63 @@ export class OAuthCallbackComponent implements OnInit {
   ) {}
 
   async ngOnInit(): Promise<void> {
-    const code = this.route.snapshot.queryParamMap.get('code');
-    if (code) {
-      try {
+    const params = this.route.snapshot.queryParamMap;
+    const code = params.get('code');
+    const sessionId = params.get('session_id');
+    const stripeSuccess = params.has('stripe_success');
+    const stripeCancel = params.has('stripe_cancel');
+    // The destination the selector asked us to land on after confirming. Stripe
+    // only substitutes {CHECKOUT_SESSION_ID} in the success_url; it does not
+    // touch our `redirect` param, so its own query (e.g. ?payment=success) is
+    // preserved verbatim.
+    const stripeRedirectTo = params.get('redirect') || '/subscription';
+
+    try {
+      // Stripe Checkout return — confirm the session with bridge-api (which
+      // verifies it with Stripe server-side), refresh tokens so the new JWT
+      // reads shouldSelectPlan:false, reload the subscription store, then
+      // redirect. Mirrors bridge-react's CallbackHandler.
+      if (stripeSuccess && sessionId) {
+        const bridge = this.authService.getBridgeAuth();
+        const ctx = bridge.getApiContext();
+        const res = await fetch(`${ctx.apiBaseUrl}/v1/account/stripe/confirm-checkout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {}),
+          },
+          body: JSON.stringify({ sessionId, appId: ctx.appId }),
+        });
+        if (!res.ok) {
+          await this.router.navigate(['/payment-error']);
+          return;
+        }
+        await bridge.refreshTokens();
+        await this.authService.loadSubscription().catch(() => {});
+        await this.router.navigateByUrl(stripeRedirectTo);
+        return;
+      }
+      if (stripeCancel) {
+        await this.router.navigateByUrl(stripeRedirectTo);
+        return;
+      }
+
+      if (code) {
         await this.authService.handleCallback(code);
-        const payment = this.route.snapshot.queryParamMap.get('payment');
-        await this.router.navigate([payment ? '/' : '/'], {
+        const payment = params.get('payment');
+        await this.router.navigate(['/'], {
           queryParams: payment ? { payment } : {},
         });
-      } catch (err) {
-        console.error('[OAuthCallback] handleCallback error:', err);
-        await this.router.navigate(['/']);
+        return;
       }
-    } else {
+
+      await this.router.navigate(['/']);
+    } catch (err) {
+      console.error('[OAuthCallback] callback error:', err);
+      if (stripeSuccess) {
+        await this.router.navigate(['/payment-error']);
+        return;
+      }
       await this.router.navigate(['/']);
     }
   }

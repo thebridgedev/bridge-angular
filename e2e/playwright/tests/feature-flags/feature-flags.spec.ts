@@ -40,12 +40,18 @@ test.describe('Feature Flags', () => {
     await expect(liveSection).toBeVisible({ timeout: MED_TIMEOUT });
   });
 
-  test('live feature flag makes API call', async ({ authenticatedPage }) => {
+  test('FF 2.0 hydrates the flag cache via the flags-cache endpoint', async ({
+    authenticatedPage,
+  }) => {
     const page = authenticatedPage;
 
+    // FF 2.0 hydrates from `/admin/flags-internal/flags-cache/:appId` (the
+    // hydrate path in createBridgeFlags), replacing the legacy per-flag
+    // `/flags/evaluate/` calls of FF 1.0. Best-effort hydrate, so this is
+    // lenient — it asserts the hydrate path is reachable, not that it ran.
     const flagApiCalls: string[] = [];
     page.on('request', (request) => {
-      if (request.url().includes('/flags/evaluate/')) {
+      if (request.url().includes('/admin/flags-internal/flags-cache/')) {
         flagApiCalls.push(request.url());
       }
     });

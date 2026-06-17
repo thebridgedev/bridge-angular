@@ -22,6 +22,10 @@ function getAngularConfig(): string {
   return 'test-local';
 }
 
+// Demo dev-server port. Overridable via HARNESS_PORT / LOCAL_BASE_URL.
+const HARNESS_PORT = process.env.HARNESS_PORT || '3001';
+const DEFAULT_BASE_URL = `http://localhost:${HARNESS_PORT}`;
+
 export default defineConfig({
   testDir: './e2e/playwright/tests',
 
@@ -46,7 +50,7 @@ export default defineConfig({
   ],
 
   use: {
-    baseURL: process.env.LOCAL_BASE_URL || 'http://localhost:3001',
+    baseURL: process.env.LOCAL_BASE_URL || DEFAULT_BASE_URL,
 
     trace: process.env.PLAYWRIGHT_RECORD_ALL === 'true' ? 'on' : 'retain-on-failure',
     screenshot: process.env.PLAYWRIGHT_RECORD_ALL === 'true' ? 'on' : 'only-on-failure',
@@ -78,8 +82,8 @@ export default defineConfig({
 
   // Angular CLI cold start is slower than Vite, so use 60s timeout
   webServer: {
-    command: `cd demo && npx ng serve --configuration=${getAngularConfig()} --port=3001`,
-    url: 'http://localhost:3001',
+    command: `cd demo && npx ng serve --configuration=${getAngularConfig()} --port=${HARNESS_PORT}`,
+    url: DEFAULT_BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
   },

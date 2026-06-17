@@ -24,11 +24,22 @@
             "outputPath": "dist/demo",
             "index": "src/index.html",
             "browser": "src/main.ts",
-            "polyfills": ["zone.js"],
+            "polyfills": [
+              "zone.js"
+            ],
             "tsConfig": "tsconfig.app.json",
             "assets": [],
-            "styles": ["src/styles.css"],
-            "scripts": []
+            "styles": [
+              "src/styles.css"
+            ],
+            "scripts": [],
+            "externalDependencies": [
+              "node:fs/promises",
+              "node:path",
+              "node:os",
+              "node:fs",
+              "node:crypto"
+            ]
           },
           "configurations": {
             "production": {

@@ -4,5 +4,5 @@ export const environment = {
   bridgeDebug: true,
   authBaseUrl: undefined as string | undefined,
   cloudViewsUrl: undefined as string | undefined,
-  teamManagementUrl: undefined as string | undefined,
+  apiBaseUrl: undefined as string | undefined,
 };

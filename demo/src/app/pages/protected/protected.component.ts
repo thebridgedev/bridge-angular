@@ -1,9 +1,14 @@
 import { Component } from '@angular/core';
-import { AuthService, ProfileService } from '@nebulr-group/bridge-angular';
+import {
+  AuthService,
+  ProfileService,
+  ProfileNameComponent,
+} from '@nebulr-group/bridge-angular';
 
 @Component({
   selector: 'app-protected',
   standalone: true,
+  imports: [ProfileNameComponent],
   template: `
     <div class="container">
       <h1>Protected Page</h1>
@@ -17,6 +22,8 @@ import { AuthService, ProfileService } from '@nebulr-group/bridge-angular';
           <div class="info-card">
             <h2>Authentication Status</h2>
             <p>You are currently authenticated</p>
+
+            <h2>Welcome, <bridge-profile-name /></h2>
 
             <h2>Your Profile</h2>
             @if (profile()) {

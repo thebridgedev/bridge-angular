@@ -580,32 +580,36 @@ export class ManageBillingComponent {
 
 ## Team Management
 
-Add team and user management to any page using the `TeamManagementComponent`. It loads the Bridge team management portal in an embedded iframe via the handover protocol — no extra configuration is needed beyond `provideBridge`.
+Add team and user management to any page using `<bridge-team-panel>`. It renders the team
+UI natively in-app (no iframe, no handover) via auth-core's `TeamService` — no extra
+configuration is needed beyond `provideBridge`.
 
 ```ts
 // src/app/pages/team/team.component.ts
 import { Component } from '@angular/core';
-import { TeamManagementComponent } from '@nebulr-group/bridge-angular';
+import { TeamManagementPanelComponent } from '@nebulr-group/bridge-angular';
 
 @Component({
   selector: 'app-team',
   standalone: true,
-  imports: [TeamManagementComponent],
+  imports: [TeamManagementPanelComponent],
   template: `
     <h1>Team Management</h1>
-    <bridge-team-management />
+    <bridge-team-panel (error)="onError($event)" />
   `,
-  styles: [`
-    bridge-team-management {
-      display: block;
-      height: 700px;
-    }
-  `],
 })
-export class TeamComponent {}
+export class TeamComponent {
+  onError(err: Error): void {
+    console.error('[Team]', err);
+  }
+}
 ```
 
-The component handles loading and error states internally.
+The panel renders three tabs (Users / Profile / Workspace) and handles loading and error
+states internally. Each tab is also exported as a standalone component
+(`<bridge-team-user-list>`, `<bridge-team-profile-form>`, `<bridge-team-workspace-form>`),
+and you can supply a custom tab bar via the `bridgeTeamTabBar` template directive. See the
+[Team Management guide](../team-management/team-management.md) for the full API.
 
 ---
 

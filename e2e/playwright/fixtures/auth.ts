@@ -131,7 +131,12 @@ export async function loginViaBridgeAuth(
   console.log(`[login] Login complete, final URL: ${finalUrl}`);
 
   const hasTokens = await page.evaluate(() => {
-    const raw = localStorage.getItem('bridge_tokens');
+    // auth-core namespaces the storage key as `bridge_tokens:<appId>` (older
+    // builds used the bare `bridge_tokens`) — match either by prefix.
+    const key = Object.keys(localStorage).find(
+      (k) => k === 'bridge_tokens' || k.startsWith('bridge_tokens:'),
+    );
+    const raw = key ? localStorage.getItem(key) : null;
     if (!raw) return false;
     try {
       const tokens = JSON.parse(raw);
@@ -148,6 +153,58 @@ export async function loginViaBridgeAuth(
   }
 
   console.log(`[login] Tokens verified in localStorage`);
+}
+
+/**
+ * Login via the in-app SDK auth flow (the `<bridge-login-form>` rendered on
+ * `/auth/login`). Mirrors bridge-svelte/react `loginViaSdkAuth`.
+ *
+ * Unlike `loginViaBridgeAuth` (which redirects to hosted auth), SDK auth posts
+ * credentials directly to auth-core and stores `bridge_tokens` in localStorage.
+ */
+export async function loginViaSdkAuth(
+  page: Page,
+  email: string,
+  password: string,
+): Promise<void> {
+  console.log(`[sdk-login] Starting SDK login for ${email}`);
+
+  await page.goto('/auth/login');
+  await page.waitForLoadState('networkidle');
+
+  const emailInput = page.locator('#login-email');
+  await emailInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
+  await emailInput.fill(email);
+
+  const passwordInput = page.locator('#login-password');
+  await passwordInput.fill(password);
+
+  const signInBtn = page.locator('button[type="submit"]:has-text("Sign in")');
+  await signInBtn.click();
+
+  await page.waitForFunction(
+    () => {
+      // auth-core namespaces the key as `bridge_tokens:<appId>` — match either.
+      const key = Object.keys(localStorage).find(
+        (k) => k === 'bridge_tokens' || k.startsWith('bridge_tokens:'),
+      );
+      const raw = key ? localStorage.getItem(key) : null;
+      if (!raw) return false;
+      try {
+        const tokens = JSON.parse(raw);
+        return !!tokens?.accessToken;
+      } catch {
+        return false;
+      }
+    },
+    { timeout: LONG_TIMEOUT },
+  );
+
+  await page.waitForURL('**/protected', { timeout: MED_TIMEOUT }).catch(() => {
+    /* may not redirect to /protected in all configurations */
+  });
+
+  console.log(`[sdk-login] SDK login complete for ${email}. Current URL: ${page.url()}`);
 }
 
 async function handleChooseUserPage(page: Page): Promise<void> {

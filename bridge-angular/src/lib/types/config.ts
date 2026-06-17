@@ -30,22 +30,45 @@ export interface BridgeConfig {
   loginRoute?: string;
 
   /**
-   * URL for bridge team management portal
-   * @default 'https://api.thebridge.dev/cloud-views/user-management-portal/users'
-   */
-  teamManagementUrl?: string;
-
-  /**
    * Base URL for bridge cloud-views service (for plan selection, payments, feature flags, etc.)
    * @default 'https://api.thebridge.dev/cloud-views'
    */
   cloudViewsUrl?: string;
 
   /**
+   * Base URL for the Bridge API. Used by the Feature Flags 2.0 SDK and the
+   * realtime runtime (live updates channel). Distinct from `authBaseUrl`
+   * (which includes the `/auth` path) and `cloudViewsUrl`.
+   * @default 'https://api.thebridge.dev'
+   * @env NG_APP_BRIDGE_API_BASE_URL
+   */
+  apiBaseUrl?: string;
+
+  /**
    * Debug mode
    * @default false
    */
   debug?: boolean;
+
+  /**
+   * Billing paywall configuration. When set, Bridge redirects an authenticated
+   * tenant that has not selected a plan to `paywallRoute` before a protected
+   * route renders (gated on `getSubscriptionStatus()` →
+   * `shouldSelectPlan && paymentsAutoRedirect !== false`). Mirrors
+   * bridge-svelte's `billing` config.
+   */
+  billing?: {
+    /**
+     * Route to redirect to when the tenant has no plan selected.
+     * e.g. '/welcome' or '/subscription'
+     */
+    paywallRoute?: string;
+    /**
+     * Route to redirect to when a Stripe checkout confirmation fails.
+     * @default '/payment-error'
+     */
+    paymentErrorRoute?: string;
+  };
 }
 
 export interface TokenSet {

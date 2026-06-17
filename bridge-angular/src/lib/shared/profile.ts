@@ -1,3 +1,6 @@
+// Profile shape mirrors auth-core's `Profile` (BridgeAuth emits it). Kept as a
+// local interface so it stays a public export of the plugin; structurally
+// identical to `@nebulr-group/bridge-auth-core`'s `Profile`.
 export interface IDToken {
   sub: string;
   preferred_username: string;

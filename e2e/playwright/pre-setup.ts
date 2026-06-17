@@ -84,7 +84,9 @@ async function preSetup() {
       appName: testAppName,
       ownerEmail,
       ownerPassword,
-      appUrl: 'http://localhost:3001',
+      // Honor LOCAL_BASE_URL / HARNESS_PORT so the registered callback origin
+      // matches where the demo actually serves (playwright.config.ts webServer).
+      appUrl: process.env.LOCAL_BASE_URL || `http://localhost:${process.env.HARNESS_PORT || '3001'}`,
     }),
   });
 

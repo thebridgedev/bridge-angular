@@ -2,7 +2,7 @@ import { inject } from '@angular/core';
 import type { CanActivateFn } from '@angular/router';
 import { Router } from '@angular/router';
 import { BridgeConfigService } from '../config/bridge-config.service';
-import { FeatureFlagService } from '../shared/services/feature-flag.service';
+import { BridgeService } from '../core/bridge.service';
 import { AuthService } from '../shared/services/auth.service';
 import { logger } from '../shared/logger';
 
@@ -48,24 +48,27 @@ function findMatchingRule(
   return null;
 }
 
-async function evaluateFlagRequirement(
+/**
+ * FF 2.0 flag read for the route guard. `bridge.evaluate(key, false)` resolves
+ * synchronously from the hydrated cache; `.passed` is the boolean. Replaces the
+ * legacy FeatureFlagService `isFeatureEnabled` (bulkEvaluate) path.
+ */
+function isFlagEnabled(flag: string, bridge: BridgeService): boolean {
+  return bridge.evaluate<boolean>(flag, false).passed;
+}
+
+function evaluateFlagRequirement(
   req: FlagRequirement,
-  featureFlagService: FeatureFlagService,
-): Promise<boolean> {
+  bridge: BridgeService,
+): boolean {
   if (typeof req === 'string') {
-    return featureFlagService.isFeatureEnabled(req);
+    return isFlagEnabled(req, bridge);
   }
   if ('any' in req) {
-    const results = await Promise.all(
-      req.any.map((f) => featureFlagService.isFeatureEnabled(f)),
-    );
-    return results.some(Boolean);
+    return req.any.some((f) => isFlagEnabled(f, bridge));
   }
   if ('all' in req) {
-    const results = await Promise.all(
-      req.all.map((f) => featureFlagService.isFeatureEnabled(f)),
-    );
-    return results.every(Boolean);
+    return req.all.every((f) => isFlagEnabled(f, bridge));
   }
   return true;
 }
@@ -94,7 +97,9 @@ async function getNavigationDecision(
   pathname: string,
   config: RouteGuardConfig,
   authService: AuthService,
-  featureFlagService: FeatureFlagService,
+  bridge: BridgeService,
+  paywallRoute?: string,
+  isAuthCallbackInFlight = false,
 ): Promise<NavigationDecision> {
   const authenticated = authService.isAuthenticated();
   const isPublic = isPublicRoute(pathname, config);
@@ -114,11 +119,41 @@ async function getNavigationDecision(
   // Check feature flag restriction
   const rule = findMatchingRule(pathname, config);
   if (rule?.featureFlag) {
-    const ok = await evaluateFlagRequirement(rule.featureFlag, featureFlagService);
+    const ok = evaluateFlagRequirement(rule.featureFlag, bridge);
     logger.debug(
       `[route-guard] path ${pathname} is restricted by bridge feature flag ${rule.featureFlag} and flag requirement evaluated to ${ok}`,
     );
     if (!ok) return { type: 'redirect', to: rule.redirectTo ?? '/' };
+  }
+
+  // Paywall redirect — the Angular analogue of bridge-svelte's BridgeBootstrap
+  // paywall gate (BridgeBootstrap.ts §2b). Fires before a protected page renders.
+  // Only redirects when:
+  //   - billing.paywallRoute is configured
+  //   - the current path is not already the paywall route (no redirect loop)
+  //   - the tenant is authenticated but has not selected a plan
+  //   - the app has not opted out via paymentsAutoRedirect: false
+  //   - the navigation is not an in-flight auth/checkout callback
+  // The last guard is essential: a Stripe return lands on the OAuth callback
+  // while shouldSelectPlan is still true (the plan isn't confirmed until the
+  // callback POSTs confirm-checkout). Without this exemption the paywall gate
+  // would bounce the callback to the paywall route and the checkout would never
+  // be confirmed. Fails open: any error fetching subscription status allows nav.
+  if (
+    paywallRoute &&
+    authenticated &&
+    pathname !== paywallRoute &&
+    !isAuthCallbackInFlight
+  ) {
+    try {
+      const status = await authService.getBridgeAuth().getSubscriptionStatus();
+      if (status?.shouldSelectPlan === true && status?.paymentsAutoRedirect !== false) {
+        logger.debug(`[route-guard] paywall redirect ${pathname} → ${paywallRoute}`);
+        return { type: 'redirect', to: paywallRoute };
+      }
+    } catch (err) {
+      logger.warn('[route-guard] paywall subscription-status check failed; allowing', err);
+    }
   }
 
   return { type: 'allow' };
@@ -132,7 +167,7 @@ export function bridgeAuthGuard(): CanActivateFn {
   return async (_route, state) => {
     const configService = inject(BridgeConfigService);
     const authService = inject(AuthService);
-    const featureFlagService = inject(FeatureFlagService);
+    const bridge = inject(BridgeService);
     const router = inject(Router);
 
     let routeConfig: RouteGuardConfig;
@@ -143,12 +178,31 @@ export function bridgeAuthGuard(): CanActivateFn {
       return true;
     }
 
-    const pathname = state.url.split('?')[0];
+    // Read the optional billing.paywallRoute. Tolerate config not being loaded
+    // (the route guard must never throw on a missing billing config).
+    let paywallRoute: string | undefined;
+    try {
+      paywallRoute = configService.getConfig().billing?.paywallRoute;
+    } catch {
+      paywallRoute = undefined;
+    }
+
+    const [pathname, search = ''] = state.url.split('?');
+    // A Stripe/OAuth return carries these markers; the callback route resolves
+    // the final destination, so the paywall gate must not pre-empt it.
+    const callbackParams = new URLSearchParams(search);
+    const isAuthCallbackInFlight =
+      callbackParams.has('code') ||
+      callbackParams.has('stripe_success') ||
+      callbackParams.has('stripe_cancel');
+
     const decision = await getNavigationDecision(
       pathname,
       routeConfig,
       authService,
-      featureFlagService,
+      bridge,
+      paywallRoute,
+      isAuthCallbackInFlight,
     );
 
     switch (decision.type) {

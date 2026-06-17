@@ -1,11 +1,18 @@
 import { Component } from '@angular/core';
-import { FeatureFlagComponent } from '@nebulr-group/bridge-angular';
+import {
+  FeatureFlagComponent,
+  BridgeFeatureFlagFallbackDirective,
+} from '@nebulr-group/bridge-angular';
 import { ConfigStatusComponent } from '../../components/config-status/config-status.component';
 
 @Component({
   selector: 'app-home',
   standalone: true,
-  imports: [FeatureFlagComponent, ConfigStatusComponent],
+  imports: [
+    FeatureFlagComponent,
+    BridgeFeatureFlagFallbackDirective,
+    ConfigStatusComponent,
+  ],
   template: `
     <div class="page-container">
       <div class="container">
@@ -71,16 +78,15 @@ import { ConfigStatusComponent } from '../../components/config-status/config-sta
               <div class="feature-example">
                 <h3 class="heading-md">Cached Feature Flag</h3>
                 <div class="card">
-                  <p class="note">Uses cached values (5-minute cache)</p>
+                  <p class="note">FF 2.0 — evaluated from the hydrated flag cache</p>
 
-                  <bridge-feature-flag flagName="demo-flag">
+                  <bridge-feature-flag key="demo-flag" [defaultValue]="false">
                     <div class="feature-status active">
                       <p>Feature flag "demo-flag" is active</p>
                     </div>
-                  </bridge-feature-flag>
-
-                  <bridge-feature-flag flagName="demo-flag" [negate]="true">
-                    <div class="feature-status">Create a feature flag called "demo-flag"</div>
+                    <div class="feature-status" *bridgeFeatureFlagFallback>
+                      Create a feature flag called "demo-flag"
+                    </div>
                   </bridge-feature-flag>
                 </div>
               </div>
@@ -88,16 +94,15 @@ import { ConfigStatusComponent } from '../../components/config-status/config-sta
               <div class="feature-example">
                 <h3 class="heading-md">Live Feature Flag</h3>
                 <div class="card">
-                  <p class="note">Direct API call on each load</p>
+                  <p class="note">FF 2.0 — reacts to realtime flag pushes</p>
 
-                  <bridge-feature-flag flagName="demo-flag" [forceLive]="true">
+                  <bridge-feature-flag key="demo-flag" [defaultValue]="false">
                     <div class="feature-status active">
                       <p>Feature flag "demo-flag" is active</p>
                     </div>
-                  </bridge-feature-flag>
-
-                  <bridge-feature-flag flagName="demo-flag" [forceLive]="true" [negate]="true">
-                    <div class="feature-status">Create a feature flag called "demo-flag"</div>
+                    <div class="feature-status" *bridgeFeatureFlagFallback>
+                      Create a feature flag called "demo-flag"
+                    </div>
                   </bridge-feature-flag>
                 </div>
               </div>

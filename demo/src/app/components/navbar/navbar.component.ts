@@ -15,11 +15,15 @@ import { AuthService, LoginComponent } from '@nebulr-group/bridge-angular';
           <div class="nav-links">
             <a routerLink="/" class="nav-link" style="margin-right: auto">Home</a>
             <a routerLink="/team" class="nav-link">Team Management</a>
+            <a routerLink="/team-panel" class="nav-link">Team Panel</a>
+            <a routerLink="/workspaces" class="nav-link">Workspaces</a>
             <a routerLink="/protected" class="nav-link">Protected Page</a>
             <button class="nav-button" (click)="logout()">Logout</button>
           </div>
         } @else {
           <div class="nav-links">
+            <a routerLink="/auth/login" class="nav-link">Sign in</a>
+            <a routerLink="/auth/signup" class="nav-link">Sign up</a>
             <bridge-login />
             <a routerLink="/protected" class="nav-link">Protected Page</a>
           </div>

@@ -6,7 +6,10 @@ test.describe('Token Persistence', () => {
     const page = authenticatedPage;
 
     const tokensBefore = await page.evaluate(() => {
-      const raw = localStorage.getItem('bridge_tokens');
+      const __k = Object.keys(localStorage).find(
+        (k) => k === 'bridge_tokens' || k.startsWith('bridge_tokens:'),
+      );
+      const raw = __k ? localStorage.getItem(__k) : null;
       return raw ? JSON.parse(raw) : null;
     });
 
@@ -17,7 +20,10 @@ test.describe('Token Persistence', () => {
     await page.waitForLoadState('networkidle');
 
     const tokensAfter = await page.evaluate(() => {
-      const raw = localStorage.getItem('bridge_tokens');
+      const __k = Object.keys(localStorage).find(
+        (k) => k === 'bridge_tokens' || k.startsWith('bridge_tokens:'),
+      );
+      const raw = __k ? localStorage.getItem(__k) : null;
       return raw ? JSON.parse(raw) : null;
     });
 

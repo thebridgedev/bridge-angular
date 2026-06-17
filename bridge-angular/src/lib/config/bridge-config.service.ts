@@ -11,7 +11,6 @@ interface ConfigState {
 
 const DEFAULT_CONFIG: Partial<BridgeConfig> = {
   authBaseUrl: 'https://api.thebridge.dev/auth',
-  teamManagementUrl: 'https://api.thebridge.dev/cloud-views/user-management-portal/users',
   cloudViewsUrl: 'https://api.thebridge.dev/cloud-views',
   defaultRedirectRoute: '/',
   loginRoute: '/login',

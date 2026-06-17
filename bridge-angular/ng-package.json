@@ -4,5 +4,6 @@
     "entryFile": "src/public-api.ts"
   },
   "dest": "dist",
-  "allowedNonPeerDependencies": ["jose"]
+  "assets": [{ "input": "src/lib", "glob": "styles.css", "output": "." }],
+  "allowedNonPeerDependencies": ["@nebulr-group/bridge-auth-core"]
 }

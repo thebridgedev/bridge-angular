@@ -1,100 +1,39 @@
-import { Injectable, computed, effect, signal } from '@angular/core';
-import { createRemoteJWKSet, errors as joseErrors, jwtVerify } from 'jose';
-import { BridgeConfigService } from '../config/bridge-config.service';
-import { transformIDToken, type IDToken, type Profile } from '../shared/profile';
+/**
+ * `ProfileService` — Angular profile surface, now riding auth-core's BridgeAuth.
+ *
+ * The legacy implementation verified the id_token locally via JWKS and derived
+ * the profile itself. That has been HARD REPLACED: `BridgeAuth` owns profile
+ * loading (it fetches/derives the profile and emits `auth:profile`), and
+ * `AuthService` exposes it as the `profile` signal. This service is now a thin
+ * facade over that signal so existing consumers (`profileService.profile`,
+ * `.isOnboarded`, etc.) keep working unchanged.
+ */
+import { Injectable, computed } from '@angular/core';
 import { AuthService } from '../shared/services/auth.service';
+import type { Profile } from '../shared/profile';
 
 @Injectable({ providedIn: 'root' })
 export class ProfileService {
-  private readonly _profile = signal<Profile | null | undefined>(undefined);
-  private readonly _error = signal<string | null>(null);
+  constructor(private authService: AuthService) {}
 
-  readonly profile = this._profile.asReadonly();
-  readonly error = this._error.asReadonly();
-  readonly isOnboarded = computed(() => this._profile()?.onboarded ?? false);
+  /** User profile (undefined = loading, null = none, Profile = loaded). */
+  readonly profile = computed<Profile | null | undefined>(() => this.authService.profile());
+  readonly isOnboarded = computed(() => this.authService.profile()?.onboarded ?? false);
   readonly hasMultiTenantAccess = computed(
-    () => this._profile()?.multiTenantAccess ?? false,
+    () => this.authService.profile()?.multiTenantAccess ?? false,
   );
 
-  private jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
-  private expectedIssuer: string | null = null;
-  private expectedAudience: string | null = null;
-
-  constructor(
-    private authService: AuthService,
-    private configService: BridgeConfigService,
-  ) {
-    // Auto-sync profile whenever tokens change
-    effect(() => {
-      const idToken = this.authService.tokens()?.idToken ?? null;
-      this.updateProfile(idToken).catch((err) =>
-        console.error('[ProfileService] updateProfile error:', err),
-      );
-    });
-  }
-
-  private ensureVerifier(): void {
-    const config = this.configService.getConfig();
-    if (
-      !this.jwks ||
-      this.expectedIssuer !== config.authBaseUrl ||
-      this.expectedAudience !== config.appId
-    ) {
-      this.jwks = createRemoteJWKSet(
-        new URL(`${config.authBaseUrl}/.well-known/jwks.json`),
-      );
-      this.expectedIssuer = config.authBaseUrl ?? null;
-      this.expectedAudience = config.appId ?? null;
-    }
-  }
-
-  private async verifyToken(idToken: string): Promise<Profile | null> {
-    try {
-      this.ensureVerifier();
-      const { payload } = await jwtVerify(
-        idToken,
-        this.jwks as NonNullable<typeof this.jwks>,
-        {
-          issuer: this.expectedIssuer as string,
-          audience: this.expectedAudience as string,
-        },
-      );
-      return transformIDToken(payload as unknown as IDToken);
-    } catch (err) {
-      if (err instanceof joseErrors.JWTExpired) {
-        this._error.set('Token expired');
-      } else if (err instanceof joseErrors.JWTInvalid) {
-        this._error.set('Invalid token');
-      } else if (err instanceof joseErrors.JWKSNoMatchingKey) {
-        this._error.set('JWKS error');
-      } else {
-        this._error.set('Token verification failed');
-      }
-      this._profile.set(null);
-      return null;
-    }
-  }
-
-  async updateProfile(idToken: string | null): Promise<void> {
-    this._profile.set(undefined); // loading state
-
-    if (!idToken) {
-      this._profile.set(null);
-      this._error.set(null);
-      return;
-    }
-
-    const result = await this.verifyToken(idToken);
-    this._profile.set(result);
-    if (result) this._error.set(null);
+  /**
+   * Resolves once the profile has loaded (per §2.6 `waitForBridge`), then
+   * returns it. Use before reading the profile in code that may run before
+   * bootstrap completes.
+   */
+  async getProfileAsync(): Promise<Profile | null | undefined> {
+    await this.authService.waitForBridge();
+    return this.authService.profile();
   }
 
   getProfile(): Profile | null | undefined {
-    return this._profile();
-  }
-
-  clear(): void {
-    this._profile.set(null);
-    this._error.set(null);
+    return this.authService.profile();
   }
 }

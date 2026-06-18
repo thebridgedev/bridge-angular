@@ -146,8 +146,11 @@ async function getNavigationDecision(
     !isAuthCallbackInFlight
   ) {
     try {
-      const status = await authService.getBridgeAuth().getSubscriptionStatus();
-      if (status?.shouldSelectPlan === true && status?.paymentsAutoRedirect !== false) {
+      // shouldRedirectToPaywall (auth-core) bundles the subscription-status fetch +
+      // the shouldSelectPlan/paymentsAutoRedirect decision (TBP-369), shared with
+      // bridge-svelte/react/nextjs. The outer guards (paywallRoute, authenticated,
+      // not-paywall-path, not-callback-in-flight) stay here.
+      if (await authService.getBridgeAuth().shouldRedirectToPaywall()) {
         logger.debug(`[route-guard] paywall redirect ${pathname} → ${paywallRoute}`);
         return { type: 'redirect', to: paywallRoute };
       }

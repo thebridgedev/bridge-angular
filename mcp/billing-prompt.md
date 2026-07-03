@@ -75,7 +75,10 @@ It reads `useBridge().subscription` (the Billing 2.0 lifecycle snapshot from aut
 |-------|------|---------|-------------|
 | `chassis` | `'bar' \| 'rail' \| 'card'` | `'rail'` | Visual shell |
 | `mode` | `'soft' \| 'hard'` | `'soft'` | `hard` renders a full lockscreen for the locked state |
-| `onActionClick` | `(state) => void` | — | Override the default CTA (which navigates to `/billing`) |
+| `onActionClick` | `(state) => void` | — | Override the default CTA click handler |
+| `actionHref` | `string` | — | CTA destination for this instance. Overrides `billing.manageRoute` config; `onActionClick` takes precedence over both |
+
+The default CTA navigates to `billing.manageRoute` from the Bridge config, falling back to `/billing`. Since this guide's plan page lives at `/subscription`, set `billing: { manageRoute: '/subscription' }` in `provideBridge()` (see Step 2b's config example).
 
 ## Step 2b — Plan-selection paywall (default)
 
@@ -107,7 +110,13 @@ export class ShellComponent {}
 // src/app/app.config.ts
 const bridgeConfig: BridgeConfig = {
   appId: environment.bridgeAppId,
-  billing: { paywallRoute: '/welcome', paymentErrorRoute: '/payment-error' },
+  billing: {
+    paywallRoute: '/welcome',
+    paymentErrorRoute: '/payment-error',
+    // Default destination of the Upgrade/Manage CTA in <bridge-billing-notice>
+    // and <bridge-quota-banner>. Defaults to '/billing'.
+    manageRoute: '/subscription',
+  },
 };
 
 export const appConfig: ApplicationConfig = {
@@ -127,7 +136,7 @@ Skip if the plans have no per-resource limits or feature differences.
 
 > Quotas and entitlements were configured in the master prompt (or the Bridge admin → **Plans**) via `bridge plan quota set` and `bridge plan entitlement set`. This step only surfaces them.
 
-To show a live quota counter, drop in `<bridge-quota-banner metric="ai_completions" />` — it renders nothing below 80% of the cap, then a warning at 80–94% and a critical notice at ≥95%. It reads `useBridge().quota(metric)` (via `createQuotaSignal(metric)`) and ticks live as usage is reported, no polling. Inputs: `metric` (required), `label`, `onActionClick`.
+To show a live quota counter, drop in `<bridge-quota-banner metric="ai_completions" />` — it renders nothing below 80% of the cap, then a warning at 80–94% and a critical notice at ≥95%. It reads `useBridge().quota(metric)` (via `createQuotaSignal(metric)`) and ticks live as usage is reported, no polling. Inputs: `metric` (required), `label`, `onActionClick`, `actionHref` (Upgrade CTA destination; defaults to `billing.manageRoute` config → `/billing`).
 
 To gate a feature by entitlement, call `useBridge().entitlements.can('key')`:
 

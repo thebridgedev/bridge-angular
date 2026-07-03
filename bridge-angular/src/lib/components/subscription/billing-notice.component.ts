@@ -27,6 +27,7 @@ import {
   type BillingSubscriptionSnapshot,
   type BillingSubscriptionState,
 } from '@nebulr-group/bridge-auth-core';
+import { BridgeConfigService } from '../../config/bridge-config.service';
 import { AuthService } from '../../shared/services/auth.service';
 import {
   createSubscriptionSignal,
@@ -87,6 +88,9 @@ export class BillingNoticeComponent implements OnInit, OnDestroy {
   @Input() className = '';
   /** Override the default CTA click handler (links to billing surface). */
   @Input() onActionClick?: (state: BillingNoticeState) => void;
+  /** CTA destination for this instance. Overrides `billing.manageRoute`
+   *  config; `onActionClick` takes precedence over both. */
+  @Input() actionHref?: string;
 
   private _sub?: BillingSignal<BillingSubscriptionSnapshot>;
   private readonly _fallback = signal<BillingSubscriptionSnapshot>({
@@ -117,7 +121,10 @@ export class BillingNoticeComponent implements OnInit, OnDestroy {
     getCopy(this.noticeState(), this.isBillingAdmin(), this.snapshot().state),
   );
 
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private configService: BridgeConfigService,
+  ) {}
 
   ngOnInit(): void {
     this._sub = createSubscriptionSignal();
@@ -146,8 +153,16 @@ export class BillingNoticeComponent implements OnInit, OnDestroy {
       this.onActionClick(this.noticeState());
       return;
     }
+    // Default: open the app's billing surface. Destination priority:
+    // `actionHref` input → `billing.manageRoute` config → '/billing'.
     if (typeof window !== 'undefined') {
-      window.location.href = '/billing';
+      let manageRoute: string | undefined;
+      try {
+        manageRoute = this.configService.getConfig().billing?.manageRoute;
+      } catch {
+        // Config not initialized — fall through to the default.
+      }
+      window.location.href = this.actionHref ?? manageRoute ?? '/billing';
     }
   }
 }

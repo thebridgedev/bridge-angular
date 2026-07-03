@@ -92,6 +92,9 @@ import { BillingNoticeComponent } from '@nebulr-group/bridge-angular';
 | `mode` | `'soft' \| 'hard'` | `'soft'` | `soft` always renders inline; `hard` renders a full-screen lockscreen when the workspace is billing-locked |
 | `className` | `string` | `''` | Class applied to the root element |
 | `onActionClick` | `(state) => void` | — | Override the default CTA click handler |
+| `actionHref` | `string` | — | CTA destination for this instance. Overrides `billing.manageRoute` config; `onActionClick` takes precedence over both |
+
+The default CTA navigates to `billing.manageRoute` from your Bridge config, falling back to `/billing`. If your plan page lives at `/subscription`, set `billing: { manageRoute: '/subscription' }` in `provideBridge()`.
 
 States it covers: trial active, trial ending soon, past due, cancellation scheduled, canceled, dunning retry scheduled, final retry, exhausted (locked). Each state has two role variants: workspace admins get an action CTA ("Update card", "Upgrade"); members get an informational variant pointing them to their workspace owner.
 
@@ -113,6 +116,9 @@ import { QuotaBannerComponent } from '@nebulr-group/bridge-angular';
 | `label` | `string` | metric key | Humanized display label |
 | `className` | `string` | `''` | Class applied to the root element |
 | `onActionClick` | `(snap) => void` | — | Override the default Upgrade CTA handler |
+| `actionHref` | `string` | — | Upgrade CTA destination for this instance. Overrides `billing.manageRoute` config; `onActionClick` takes precedence over both |
+
+Like `<bridge-billing-notice>`, the default Upgrade CTA navigates to `billing.manageRoute` (falling back to `/billing`).
 
 For a fully custom quota UI, read the underlying snapshot directly via the signal adapter:
 

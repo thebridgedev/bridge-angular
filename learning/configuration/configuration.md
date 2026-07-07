@@ -26,10 +26,6 @@ interface BridgeConfig {
    *  @default 'https://api.thebridge.dev/cloud-views' */
   cloudViewsUrl?: string;
 
-  /** URL for the Bridge team-management portal.
-   *  @default 'https://api.thebridge.dev/cloud-views/user-management-portal/users' */
-  teamManagementUrl?: string;
-
   /** Route to redirect to after login. @default '/' */
   defaultRedirectRoute?: string;
 
@@ -38,6 +34,17 @@ interface BridgeConfig {
 
   /** Enable debug logging. @default false */
   debug?: boolean;
+
+  /** Billing paywall configuration. When set, Bridge redirects an authenticated
+   *  tenant that hasn't selected a plan to `paywallRoute` before a protected
+   *  route renders. */
+  billing?: {
+    /** Route to redirect to when the tenant has no plan selected. */
+    paywallRoute?: string;
+    /** Route to redirect to when a Stripe checkout confirmation fails.
+     *  @default '/payment-error' */
+    paymentErrorRoute?: string;
+  };
 }
 ```
 

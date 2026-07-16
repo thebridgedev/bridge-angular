@@ -1,45 +1,79 @@
 # Switching workspaces
 
+Two components cover workspace selection (a workspace is called a *tenant* in the API, which is why some identifiers below say `tenant`):
+
+- **`bridge-tenant-selector`**: part of the login flow. Lets a user pick which workspace to sign in to.
+- **`bridge-workspace-selector`**: for an already signed-in user. Lets them switch the active workspace, for example from a settings page or sidebar.
+
+Both only come into play when the user has **more than one enabled membership in an active tenant**. A membership that's been disabled, or a workspace that isn't active (for example, suspended for non-payment), doesn't count and won't be shown. A user with exactly one enabled-and-active membership goes straight in with no selector.
+
+## TenantSelector
+
+Lets a user with multiple workspaces pick one during login. It appears automatically inside `<bridge-login-form>` when `authState` becomes `'tenant-selection'` (see [Auth states](/auth/user-token/auth-states/)), so you normally don't wire anything. Use it standalone only if you're building a custom login flow.
+
+**Inputs & outputs:**
+
+| Input / output | Type | Default | Description |
+|------|------|---------|-------------|
+| `(select)` | `EventEmitter<void>` | (none) | Called after a workspace is selected |
+| `(error)` | `EventEmitter<Error>` | (none) | Called on error |
+
+**Standalone usage:**
+
+```typescript
+import { Component, inject } from '@angular/core';
+import { Router } from '@angular/router';
+import { AuthService, TenantSelectorComponent } from '@nebulr-group/bridge-angular';
+
+@Component({
+  selector: 'app-tenant-selection',
+  standalone: true,
+  imports: [TenantSelectorComponent],
+  template: `
+    @if (authService.authState() === 'tenant-selection') {
+      <bridge-tenant-selector (select)="router.navigateByUrl('/dashboard')" />
+    }
+  `,
+})
+export class TenantSelectionComponent {
+  protected readonly authService = inject(AuthService);
+  protected readonly router = inject(Router);
+}
+```
+
+It reads the available workspace memberships from the `AuthService.tenantUsers()` signal, the same list `<bridge-login-form>` uses.
+
 ## WorkspaceSelector
 
-A drop-in switcher (`bridge-workspace-selector` / `WorkspaceSelectorComponent`) that lists the workspaces the signed-in user can access and switches the active one. On switch, the SDK re-issues a session for the chosen tenant and the `AuthService` signals re-snapshot.
+A drop-in switcher that lists the workspaces the signed-in user can access and switches the active one. On switch, the SDK issues a fresh session for the chosen workspace and refreshes the whole `BridgeService` in one update, including the user's role, which may differ in the new workspace.
 
-**Props:**
+**Inputs & outputs:**
 
-| Input | Type | Default | Description |
+| Input / output | Type | Default | Description |
 |------|------|---------|-------------|
-| `className` | `string` | `''` | Forwarded to the root element's `class` |
-| `style` | `string` | `''` | Forwarded to the root element's `style` |
-
-| Output | Type | Description |
-|--------|------|-------------|
-| `switched` | `EventEmitter<void>` | Emitted after the active workspace changes |
-| `error` | `EventEmitter<Error>` | Emitted on switch error |
+| `(switched)` | `EventEmitter<void>` | (none) | Called after the active workspace changes |
+| `(error)` | `EventEmitter<Error>` | (none) | Called on switch error |
 
 **Usage:**
 
-```ts
+```typescript
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { WorkspaceSelectorComponent } from '@nebulr-group/bridge-angular';
 
 @Component({
-  selector: 'app-switch-workspace',
+  selector: 'app-workspaces',
   standalone: true,
   imports: [WorkspaceSelectorComponent],
   template: `
     <bridge-workspace-selector
-      (switched)="onSwitched()"
+      (switched)="router.navigateByUrl('/')"
       (error)="onError($event)"
     />
   `,
 })
-export class SwitchWorkspaceComponent {
-  private readonly router = inject(Router);
-
-  onSwitched(): void {
-    this.router.navigateByUrl('/');
-  }
+export class WorkspacesPageComponent {
+  protected readonly router = inject(Router);
 
   onError(err: Error): void {
     console.error(err);
@@ -47,22 +81,6 @@ export class SwitchWorkspaceComponent {
 }
 ```
 
-There's no custom-row-markup slot today — the list renders fixed `data-bridge-workspace-*` markup (`data-bridge-workspace-item`, `data-bridge-workspace-avatar`, `data-bridge-workspace-name`, etc.) that you can target with CSS, but there's no template-projection hook for swapping the row layout itself.
+**Styling the rows**: the list renders stable `data-bridge-workspace-*` attributes (`data-bridge-workspace-item`, `data-bridge-workspace-avatar`, `data-bridge-workspace-name`, `data-bridge-workspace-user`, plus `data-active` / `data-loading` state markers) that you can target with CSS. There's no template-projection hook for replacing the row markup itself.
 
-## TenantSelector at login
-
-When a user's credentials map to more than one tenant, `bridge-login-form` surfaces a `bridge-tenant-selector` step automatically so they pick which workspace to enter. You don't wire anything — it appears when `AuthService.authState()` becomes `'tenant-selection'`. See [Auth states](/auth/user-token/auth-states/) for the full list of states.
-
-`bridge-tenant-selector` (`TenantSelectorComponent`) is also exported directly if you're building a fully custom login flow:
-
-| Input | Type | Default | Description |
-|------|------|---------|-------------|
-| `className` | `string` | `''` | Forwarded to the form wrapper's `class` |
-| `style` | `string` | `''` | Forwarded to the form wrapper's `style` |
-
-| Output | Type | Description |
-|--------|------|-------------|
-| `select` | `EventEmitter<void>` | Emitted after a tenant is selected |
-| `error` | `EventEmitter<Error>` | Emitted on selection error |
-
-It reads the available tenant memberships from `AuthService.tenantUsers()` and completes the switch via the underlying `selectTenant(id)` call.
+For the concept behind all of this (what a workspace is, how isolation works), see [Multi-tenancy](/auth/multi-tenancy/).

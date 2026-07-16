@@ -1,35 +1,82 @@
-# SDK Auth Quickstart
+# SDK auth quickstart
 
-Render authentication UI directly inside your Angular app — no redirect to the Bridge hosted auth pages.
+> This guide covers in-app SDK auth components. For the simplest setup using Bridge's hosted login page, see the [Hosted auth quickstart](../quickstart/hosted-quickstart.md).
 
-## Prerequisites
+Get up and running with The Bridge Angular plugin using in-app SDK auth components, with no redirects to external login pages.
 
-- The hosted-quickstart integration steps are complete (`provideBridge(...)` wired in `app.config.ts`).
-- The Bridge app has **`tenantSelfSignup: true`** enabled (required for the signup flow).
-- Enable the auth methods you want (Password, Magic Link, Passkeys, SSO providers) in the Bridge admin UI.
-- The plugin ships structural CSS — import it once in your global stylesheet (`src/styles.css`):
-
-  ```css
-  @import '@nebulr-group/bridge-angular/styles.css';
-  ```
-
-## Install
+## 1. Install the plugin
 
 ```bash
-npm install @nebulr-group/bridge-angular @nebulr-group/bridge-auth-core
+npm i @nebulr-group/bridge-angular
 ```
 
-(bridge-angular uses npm — match the Angular community's package manager.)
+## 2. Configuration (`app.config.ts`)
 
-## Pages
+Initialize Bridge with `provideBridge` in your application config. The `BridgeConfig` object tells Bridge your `appId` and where your login page lives. The `routeConfig` defines which routes are public and which require authentication.
 
-These are plain standalone Angular components registered with your router. Keep the
-paths identical so the public auth flow links line up. Every component rides the
-adopted auth-core `BridgeAuth` via the injectable `AuthService` — no extra wiring needed.
+```typescript
+// src/app/app.config.ts
+import { ApplicationConfig } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { provideBridge, type BridgeConfig, type RouteGuardConfig } from '@nebulr-group/bridge-angular';
+import { routes } from './app.routes';
 
-### `/auth/login`
+const config: BridgeConfig = {
+  appId: import.meta.env.NG_APP_BRIDGE_APP_ID,
+  loginRoute: '/auth/login',
+};
 
-```ts
+const routeConfig: RouteGuardConfig = {
+  rules: [
+    { match: '/', public: true },
+    { match: /^\/auth($|\/)/, public: true },
+  ],
+  defaultAccess: 'protected',
+};
+
+export const appConfig: ApplicationConfig = {
+  providers: [
+    provideRouter(routes),
+    provideBridge(config, routeConfig),
+  ],
+};
+```
+
+Key points:
+- **`loginRoute`**: tells Bridge where to redirect unauthenticated users (your in-app login page).
+- **`defaultAccess: 'protected'`**: all routes require auth unless explicitly marked `public`.
+- **`provideBridge` runs via `APP_INITIALIZER`**: it initializes auth, feature flags, and the live channel before the app renders, so no bootstrap component or ready-gating is needed. Bridge requires client-side rendering (Angular apps are client-rendered by default).
+
+## 3. Register the routes and guard
+
+Register the auth pages with your router and apply `bridgeAuthGuard` via `canActivateChild` on the routes that should be protected. The auth pages themselves are covered by the `public: true` rule above.
+
+```typescript
+// src/app/app.routes.ts
+import { Routes } from '@angular/router';
+import { bridgeAuthGuard } from '@nebulr-group/bridge-angular';
+import { SdkLoginComponent } from './pages/auth/login.component';
+import { SdkSignupComponent } from './pages/auth/signup.component';
+
+export const routes: Routes = [
+  { path: 'auth/login', component: SdkLoginComponent },
+  { path: 'auth/signup', component: SdkSignupComponent },
+  {
+    path: '',
+    canActivateChild: [bridgeAuthGuard()],
+    children: [
+      // ...your app's routes...
+    ],
+  },
+];
+```
+
+## 4. Create a login page
+
+Drop the `<bridge-login-form>` component onto a page that matches your `loginRoute`.
+
+```typescript
+// src/app/pages/auth/login.component.ts
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { LoginFormComponent } from '@nebulr-group/bridge-angular';
@@ -39,7 +86,17 @@ import { LoginFormComponent } from '@nebulr-group/bridge-angular';
   standalone: true,
   imports: [LoginFormComponent],
   template: `
-    <bridge-login-form heading="Sign in" (login)="router.navigateByUrl('/')" />
+    <div class="login-page">
+      <bridge-login-form [showSignupLink]="true" (login)="router.navigateByUrl('/')" />
+    </div>
+  `,
+  // Optional: center the form on the page. Not required for the component to work.
+  styles: `
+    .login-page {
+      display: flex;
+      justify-content: center;
+      padding: 3rem 1rem;
+    }
   `,
 })
 export class SdkLoginComponent {
@@ -47,13 +104,16 @@ export class SdkLoginComponent {
 }
 ```
 
-`<bridge-login-form>` handles MFA, MFA setup, tenant selection, and the magic-link
-callback automatically. It reads the anonymous app config and only shows enabled auth
-methods.
+Wire the `(login)` output to navigate into your app after a successful sign-in. Auth method visibility (magic link, passkeys, SSO) is derived from your app's configuration in the Control Center (your admin dashboard at app.thebridge.dev).
 
-### `/auth/signup`
+`<bridge-login-form>` handles multi-step flows inline: forgot password, magic link requests, passkey login, MFA challenge, MFA setup, and workspace selection (a workspace is called a *tenant* in the API) all render within the same component automatically when needed.
 
-```ts
+**Outputs:** `(login)` (fires after successful auth, useful for analytics or navigation), `(error)` (fires on auth failure).
+
+## 5. Create a signup page
+
+```typescript
+// src/app/pages/auth/signup.component.ts
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { SignupFormComponent } from '@nebulr-group/bridge-angular';
@@ -63,7 +123,17 @@ import { SignupFormComponent } from '@nebulr-group/bridge-angular';
   standalone: true,
   imports: [SignupFormComponent],
   template: `
-    <bridge-signup-form (signup)="router.navigateByUrl('/auth/login')" />
+    <div class="signup-page">
+      <bridge-signup-form [showLoginLink]="true" loginHref="/auth/login" />
+    </div>
+  `,
+  // Optional: center the form on the page.
+  styles: `
+    .signup-page {
+      display: flex;
+      justify-content: center;
+      padding: 3rem 1rem;
+    }
   `,
 })
 export class SdkSignupComponent {
@@ -71,107 +141,50 @@ export class SdkSignupComponent {
 }
 ```
 
-### Magic link / forgot password / set password / passkey setup
+After a successful signup the user receives a verification email. Once verified, they can sign in.
 
-| Route | Selector |
-|---|---|
-| `/auth/magic-link` | `<bridge-magic-link>` |
-| `/auth/forgot-password` | `<bridge-forgot-password>` |
-| `/auth/set-password/:token` | `<bridge-forgot-password [token]="token">` |
-| `/auth/setup-passkey/:token` | `<bridge-passkey-setup [token]="token">` |
+**Outputs:** `(signup)` (fires after successful signup), `(error)` (fires on failure).
 
-For the token routes, read the param with `ActivatedRoute`:
+## 6. Styles
 
-```ts
-import { Component, inject } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
-import { ForgotPasswordComponent } from '@nebulr-group/bridge-angular';
+> **Framework note:** the styles are not injected automatically. Import them
+> once in your global stylesheet (`src/styles.css`):
+> `@import '@nebulr-group/bridge-angular/styles.css';`
 
-@Component({
-  selector: 'app-sdk-set-password',
-  standalone: true,
-  imports: [ForgotPasswordComponent],
-  template: `<bridge-forgot-password [token]="token" />`,
-})
-export class SdkSetPasswordComponent {
-  protected readonly token =
-    inject(ActivatedRoute).snapshot.paramMap.get('token') ?? '';
-}
+See [Theming & Styles](../theming/theming.md) for customization options.
+
+## 7. Configuration
+
+The `config` object you pass to `provideBridge` is a `BridgeConfig`. The most common fields:
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `appId` | **(required)** | Your Bridge app ID |
+| `loginRoute` | (unset) | Declared but not used by the route guard yet; unauthenticated users go to Bridge's hosted login page. See the [config reference](/auth/config/#login-route) |
+| `defaultRedirectRoute` | `'/'` | Route to land on after login |
+| `apiBaseUrl` | `https://api.thebridge.dev` | Root URL for the Bridge API (dev override) |
+| `debug` | `false` | Enable debug logging |
+
+See the [Configuration reference](/auth/config/) for the full list (base URLs, billing routes).
+
+Rather than hardcoding environment-specific values, keep them in env config and read them with the `NG_APP_` prefix (via `@ngx-env/builder` or your environment files), so values reach the browser bundle:
+
+```env
+NG_APP_BRIDGE_APP_ID=your-app-id-here
+NG_APP_BRIDGE_DEFAULT_REDIRECT_ROUTE=/dashboard
 ```
 
-### Register the routes
-
-The SDK auth pages are **public** — register them outside the guarded children group,
-and add matching `public: true` rules to your `RouteGuardConfig` (the route guard
-defaults to `protected`):
-
-```ts
-// app.routes.ts
-export const routes: Routes = [
-  { path: 'auth/login', component: SdkLoginComponent },
-  { path: 'auth/signup', component: SdkSignupComponent },
-  { path: 'auth/magic-link', component: SdkMagicLinkComponent },
-  { path: 'auth/forgot-password', component: SdkForgotPasswordComponent },
-  { path: 'auth/set-password/:token', component: SdkSetPasswordComponent },
-  { path: 'auth/setup-passkey/:token', component: SdkSetupPasskeyComponent },
-  // ...your guarded routes...
-];
-```
-
-```ts
-// app.config.ts — RouteGuardConfig
-const routeConfig: RouteGuardConfig = {
-  rules: [
-    { match: '/auth/login', public: true },
-    { match: '/auth/signup', public: true },
-    { match: '/auth/magic-link', public: true },
-    { match: '/auth/forgot-password', public: true },
-    { match: /^\/auth\/set-password($|\/)/, public: true },
-    { match: /^\/auth\/setup-passkey($|\/)/, public: true },
-  ],
-  defaultAccess: 'protected',
+```typescript
+const config: BridgeConfig = {
+  appId: import.meta.env.NG_APP_BRIDGE_APP_ID,
+  loginRoute: '/auth/login',
+  defaultRedirectRoute: import.meta.env.NG_APP_BRIDGE_DEFAULT_REDIRECT_ROUTE ?? '/',
 };
 ```
 
-## App config
+## Next steps
 
-The plugin reads the anonymous app config (called on mount) to know:
-- Which SSO providers are enabled.
-- Whether passwords / magic links / passkeys are available.
-- Whether signup is allowed.
-
-Toggles in the Bridge admin UI propagate to `<bridge-login-form>` automatically.
-
-## Environment variables
-
-bridge-angular reads the app id from a `NG_APP_`-prefixed env var:
-
-```bash
-NG_APP_BRIDGE_APP_ID=your-app-id
-```
-
-## Customizing
-
-Override inputs on `<bridge-login-form>`:
-
-```html
-<bridge-login-form
-  [showSignupLink]="false"
-  [showMagicLink]="false"
-  [showPasskeys]="true"
-  [ssoConnections]="[{ id: 'google', type: 'google', name: 'Google' }]"
-  forgotPasswordHref="/help/reset-password"
-/>
-```
-
-## Outputs
-
-Every sdk-auth component exposes Angular outputs for the key lifecycle events
-(`(login)`, `(signup)`, `(verified)`, `(complete)`, `(error)`, etc.) so you can hook
-navigation, toasts, or analytics. The internal step machines (forgot-password,
-MFA challenge/setup) are handled for you.
-
-## See also
-
-- [Auth state and signals](../auth/auth.md)
-- [Payments](../payments/payments.md)
+- **More auth UI components**: [MFA](/auth/ui/mfa/), [passkeys](/auth/ui/passkeys/), [magic link](/auth/ui/magic-link/), [SSO login button](/auth/ui/google-sso/), [switching workspaces](/auth/ui/switching-workspaces/), and [user & team management](/auth/ui/team-management/).
+- **The user token**: [logging in and logging out](/auth/user-token/logging-in-and-out/), [getting the token](/auth/user-token/getting-the-token/), and [auth states](/auth/user-token/auth-states/).
+- **Route protection**: [frontend route guards](/auth/securing/route-guards/), or browse the full [Auth](/auth/) section.
+- **Feature flags and billing**: [how flags work](/feature-flags/how-it-works/) and [how billing works](/billing/how-it-works/).

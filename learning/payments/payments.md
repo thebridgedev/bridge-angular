@@ -1,11 +1,11 @@
 # Payments & Subscriptions
 
-Bridge gives every workspace one canonical subscription — a plan, a status, and an optional trial — kept live in your Angular app over the Bridge live channel. When a payment fails, a trial nears its end, or an admin changes the plan in Stripe, your UI reflects it within seconds, without polling.
+Bridge gives every workspace one canonical subscription (a plan, a status, and an optional trial) kept live in your Angular app over the Bridge live channel. When a payment fails, a trial nears its end, or an admin changes the plan in Stripe, your UI reflects it within seconds, without polling.
 
 There are two ways to consume billing state:
 
-1. **The `BridgeService` surface + drop-in components** (recommended) — live, reactive, zero wiring.
-2. **The classic subscription signal + service methods** — the original checkout flow. Still fully supported; see [Classic checkout & subscription state](#classic-checkout--subscription-state) below.
+1. **The `BridgeService` surface + drop-in components** (recommended): live, reactive, zero wiring.
+2. **The classic subscription signal + service methods**: the original checkout flow. Still fully supported; see [Classic checkout & subscription state](#classic-checkout--subscription-state) below.
 
 > Billing 2.0 uses the env prefix `NG_APP_` for any configuration (e.g. `NG_APP_BRIDGE_API_BASE_URL`). All components below assume `provideBridge()` has run in your `app.config.ts`.
 
@@ -46,7 +46,7 @@ interface SubscriptionSnapshot {
 }
 ```
 
-The signal is `null` until the channel delivers the first snapshot — gate on it for a skeleton state, exactly like the example above.
+The signal is `null` until the channel delivers the first snapshot; gate on it for a skeleton state, exactly like the example above.
 
 ### Drop-in components
 
@@ -58,7 +58,7 @@ All structural CSS for these components ships in `@nebulr-group/bridge-angular/s
 
 #### `<bridge-subscription-status>`
 
-Renders the current plan name + a status badge. Mounts and subscribes itself — no inputs required.
+Renders the current plan name + a status badge. Mounts and subscribes itself; no inputs required.
 
 ```ts
 import { SubscriptionStatusComponent } from '@nebulr-group/bridge-angular';
@@ -75,7 +75,7 @@ import { SubscriptionStatusComponent } from '@nebulr-group/bridge-angular';
 
 #### `<bridge-billing-notice>`
 
-The unified billing banner. Renders **nothing** while the subscription is healthy, and the right notice when it needs attention — trial countdown, payment failed, dunning retries, cancellation, locked. Not dismissible; it disappears when the status flips back to healthy.
+The unified billing banner. Renders **nothing** while the subscription is healthy, and the right notice when it needs attention: trial countdown, payment failed, dunning retries, cancellation, locked. Not dismissible; it disappears when the status flips back to healthy.
 
 ```ts
 import { BillingNoticeComponent } from '@nebulr-group/bridge-angular';
@@ -91,7 +91,7 @@ import { BillingNoticeComponent } from '@nebulr-group/bridge-angular';
 | `chassis` | `'bar' \| 'rail' \| 'card'` | `'rail'` | Visual variant |
 | `mode` | `'soft' \| 'hard'` | `'soft'` | `soft` always renders inline; `hard` renders a full-screen lockscreen when the workspace is billing-locked |
 | `className` | `string` | `''` | Class applied to the root element |
-| `onActionClick` | `(state) => void` | — | Override the default CTA click handler |
+| `onActionClick` | `(state) => void` | (none) | Override the default CTA click handler |
 
 States it covers: trial active, trial ending soon, past due, cancellation scheduled, canceled, dunning retry scheduled, final retry, exhausted (locked). Each state has two role variants: workspace admins get an action CTA ("Update card", "Upgrade"); members get an informational variant pointing them to their workspace owner.
 
@@ -112,7 +112,7 @@ import { QuotaBannerComponent } from '@nebulr-group/bridge-angular';
 | `metric` | `string` | required | Metric key to watch |
 | `label` | `string` | metric key | Humanized display label |
 | `className` | `string` | `''` | Class applied to the root element |
-| `onActionClick` | `(snap) => void` | — | Override the default Upgrade CTA handler |
+| `onActionClick` | `(snap) => void` | (none) | Override the default Upgrade CTA handler |
 
 For a fully custom quota UI, read the underlying snapshot directly via the signal adapter:
 
@@ -134,7 +134,7 @@ import { PaywallComponent } from '@nebulr-group/bridge-angular';
 
 ```html
 <bridge-paywall successRedirect="/welcome" cancelRedirect="/plans">
-  <!-- your app — only rendered once a plan is active -->
+  <!-- your app: only rendered once a plan is active -->
   <router-outlet />
 </bridge-paywall>
 ```
@@ -143,14 +143,14 @@ import { PaywallComponent } from '@nebulr-group/bridge-angular';
 |------|------|---------|-------------|
 | `successRedirect` | `string` | `'/'` | Where to send the user after a successful Stripe payment |
 | `cancelRedirect` | `string` | `'/'` | Where to send the user if they cancel checkout |
-| `(select)` | `EventEmitter<{ plan, price }>` | — | Emitted after free-plan selection or a direct plan change |
+| `(select)` | `EventEmitter<{ plan, price }>` | (none) | Emitted after free-plan selection or a direct plan change |
 | `heading` | `string` | "Choose a plan" | Override the modal heading |
 
 Workspaces with `paymentsAutoRedirect: false` are exempt from the gate.
 
 ### Entitlements
 
-Plans grant **entitlements** — named capabilities like `ai_completions` or `sso`. They arrive with the session snapshot and are replaced wholesale on every `entitlements.changed` push, so an upgrade unlocks features live. Read them off `BridgeService`:
+Plans grant **entitlements**: named capabilities like `ai_completions` or `sso`. They arrive with the session snapshot and are replaced wholesale on every `entitlements.changed` push, so an upgrade unlocks features live. Read them off `BridgeService`:
 
 ```ts
 // reactive snapshot signal
@@ -158,7 +158,7 @@ const entitlements = this.bridge.tenant.entitlements.snapshot;
 // @if (entitlements()?.['ai_completions']) { <app-ai-panel /> }
 ```
 
-Imperative check (synchronous, fail-closed — `false` until the snapshot lands):
+Imperative check (synchronous, fail-closed: `false` until the snapshot lands):
 
 ```ts
 if (this.bridge.tenant.entitlements.can('ai_completions')) { /* ... */ }
@@ -171,13 +171,13 @@ const useAi = this.bridge.flag('use_ai', false);
 // @if (useAi().passed) { <app-ai-panel /> }
 ```
 
-This gives you everything flags give you on top of the entitlement — percentage rollouts within a plan, kill switches, per-segment overrides — without code changes. See the Feature Flags guide for the full list of `bridge:billing.*` targeting attributes.
+This gives you everything flags give you on top of the entitlement (percentage rollouts within a plan, kill switches, per-segment overrides) without code changes. See the Feature Flags guide for the full list of `bridge:billing.*` targeting attributes.
 
-> Entitlements are **billing-derived** (what the plan grants the workspace). They are not roles — use Bridge's role/privilege system for who-may-do-what inside a workspace.
+> Entitlements are **billing-derived** (what the plan grants the workspace). They are not roles; use Bridge's role/privilege system for who-may-do-what inside a workspace.
 
 ### Billing events
 
-For side effects — analytics, audit logs, Slack alerts — register handlers on the unified events dispatcher (`BridgeService.events`). This is separate from UI rendering, which the components above own:
+For side effects (analytics, audit logs, Slack alerts) register handlers on the unified events dispatcher (`BridgeService.events`). This is separate from UI rendering, which the components above own:
 
 ```ts
 const unsubscribe = this.bridge.events.handle({
@@ -194,7 +194,7 @@ Multiple handlers can register for the same kind; one throwing handler never blo
 
 ### Classic checkout & subscription state
 
-The original checkout flow — plan picker, Stripe Checkout — remains fully supported and is what `<bridge-plan-selector>` and `<bridge-paywall>` use under the hood.
+The original checkout flow (plan picker, Stripe Checkout) remains fully supported and is what `<bridge-plan-selector>` and `<bridge-paywall>` use under the hood.
 
 #### `<bridge-plan-selector>`
 
@@ -218,7 +218,7 @@ import { PlanSelectorComponent } from '@nebulr-group/bridge-angular';
 |------|------|---------|-------------|
 | `successUrl` | `string` | required | Absolute URL to land on after successful payment |
 | `cancelUrl` | `string` | required | Absolute URL to land on if the user cancels checkout |
-| `(select)` | `EventEmitter<{ plan, price }>` | — | Emitted after a free plan is selected or a plan change completes |
+| `(select)` | `EventEmitter<{ plan, price }>` | (none) | Emitted after a free plan is selected or a plan change completes |
 | `className` / `style` | `string` | `''` | Forwarded to the root element |
 
 The pick handler branches internally:
@@ -232,10 +232,10 @@ The pick handler branches internally:
 
 | Attribute | Values | When set |
 |-----------|--------|----------|
-| `data-bridge-plan-selector` | — | Always present on root |
+| `data-bridge-plan-selector` | (none) | Always present on root |
 | `data-loading` | `"true"` / `"false"` | Loading + in-flight pick state |
 | `data-state` | `"idle"` `"select-plan"` `"active"` `"trial"` `"payment-failed"` `"setup-payments"` | Current status |
-| `data-bridge-plan-card` | — | On each plan card |
+| `data-bridge-plan-card` | (none) | On each plan card |
 | `data-current` | `"true"` / `"false"` | Whether this card is the current plan |
 | `data-trial` | `"true"` / `"false"` | Whether this plan has a trial |
 
@@ -292,7 +292,7 @@ The plan catalog is also available as a lazy slice on `BridgeService`: `await th
 
 | `SubscriptionStatus` field | Type | Meaning |
 |----------------------------|------|---------|
-| `shouldSelectPlan` | `boolean` | No plan chosen yet — show plan picker |
+| `shouldSelectPlan` | `boolean` | No plan chosen yet; show plan picker |
 | `shouldSetupPayments` | `boolean` | Paid plan selected but checkout not completed |
 | `paymentFailed` | `boolean` | Last Stripe invoice failed |
 | `paymentsEnabled` | `boolean` | Active billing subscription |

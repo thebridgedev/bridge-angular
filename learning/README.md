@@ -1,4 +1,4 @@
-# Bridge Angular — Learning Docs
+# Bridge Angular: Learning Docs
 
 Guides to get you up and running:
 

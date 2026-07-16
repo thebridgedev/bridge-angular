@@ -52,7 +52,7 @@ interface BridgeConfig {
 
 Register it in your `app.config.ts` providers. It wires an `APP_INITIALIZER` that
 initializes config, mounts the realtime runtime, and initializes Feature Flags 2.0
-once during app bootstrap — the Angular equivalent of bridge-svelte's
+once during app bootstrap, the Angular equivalent of bridge-svelte's
 `<BridgeBootstrap />`.
 
 ```typescript
@@ -96,7 +96,7 @@ provideBridge(
 ): EnvironmentProviders
 ```
 
-Bootstrap is idempotent — the runtime and flags init only run once.
+Bootstrap is idempotent: the runtime and flags init only run once.
 
 ### RouteGuardConfig
 
@@ -111,7 +111,7 @@ interface RouteGuardConfig {
 }
 
 interface RouteRule {
-  /** Path to match — exact string, wildcard string, or RegExp. */
+  /** Path to match: exact string, wildcard string, or RegExp. */
   match: string | RegExp;
   /** Route is accessible without authentication. */
   public?: boolean;
@@ -122,7 +122,7 @@ interface RouteRule {
 }
 ```
 
-Feature-flag requirements are evaluated with **Feature Flags 2.0** — the guard
+Feature-flag requirements are evaluated with **Feature Flags 2.0**: the guard
 reads the hydrated flag cache (no per-route network round trip).
 
 ### Passing values via .env
@@ -174,5 +174,5 @@ export class ConfigStatusComponent {
 }
 ```
 
-`configService.config` and `configService.configReady` are signals — read them
+`configService.config` and `configService.configReady` are signals; read them
 directly in templates or inside `computed()` / `effect()`.

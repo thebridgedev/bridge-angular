@@ -1,52 +1,42 @@
 # Passkeys
 
-Passkey (WebAuthn) authentication lets users sign in with a biometric or device credential instead of a password. bridge-angular needs `@simplewebauthn/browser` as a peer dependency for the passkey components.
+Passkey (WebAuthn) authentication lets users sign in with a biometric or device
+credential instead of a password. Requires `@simplewebauthn/browser` as a peer
+dependency.
 
 ## PasskeyLogin
 
-`<bridge-passkey-login>` is a button that triggers passkey authentication via the browser's WebAuthn API (`authenticateWithPasskey()`).
+A button that triggers passkey authentication via the browser's WebAuthn API.
 
-**Inputs:**
+**Inputs & outputs:**
 
-| Input | Type | Default | Description |
-|-------|------|---------|-------------|
-| `setupHref` | `string` | — | URL to navigate to when the user has no registered passkey, if nothing is bound to `(setupPasskey)` |
-| `label` | `string` | `'Continue with passkey'` | Button label |
-| `className` | `string` | `''` | CSS class applied to the button |
-| `style` | `string` | `''` | Inline style applied to the button |
+| Input / output | Type | Default | Description |
+|------|------|---------|-------------|
+| `(login)` | `EventEmitter<void>` | (none) | Called after successful passkey login |
+| `(error)` | `EventEmitter<Error>` | (none) | Called on error |
+| `(setupPasskey)` | `EventEmitter<void>` | (none) | Called when the user wants to set up a passkey instead |
+| `setupHref` | `string` | (none) | URL to navigate to when the user has no registered passkey, if nothing is bound to `(setupPasskey)` |
+| `label` | `string` | `'Continue with passkey'` | Button label text |
 
-**Outputs:**
-
-| Output | Type | Description |
-|--------|------|-------------|
-| `login` | `EventEmitter<void>` | Fires after successful passkey login |
-| `error` | `EventEmitter<Error>` | Fires on error |
-| `setupPasskey` | `EventEmitter<void>` | Fires when the browser reports the user has no passkey yet, instead of falling back to `setupHref` |
-
-```ts
-// login.component.ts
-import { Component } from '@angular/core';
+```typescript
+import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { PasskeyLoginComponent } from '@nebulr-group/bridge-angular';
 
 @Component({
-  selector: 'app-passkey-login',
+  selector: 'app-passkey-login-page',
   standalone: true,
   imports: [PasskeyLoginComponent],
   template: `
     <bridge-passkey-login
       setupHref="/auth/setup-passkey"
-      (login)="onLogin()"
+      (login)="router.navigateByUrl('/dashboard')"
       (error)="onError($event)"
     />
   `,
 })
 export class PasskeyLoginPageComponent {
-  constructor(private router: Router) {}
-
-  onLogin(): void {
-    this.router.navigateByUrl('/dashboard');
-  }
+  protected readonly router = inject(Router);
 
   onError(err: Error): void {
     console.error(err);
@@ -56,74 +46,57 @@ export class PasskeyLoginPageComponent {
 
 ## PasskeySetup
 
-`<bridge-passkey-setup>` registers a new passkey using a setup token (emailed to the user via `PasskeyRequestSetupLink` below), by calling `registerPasskeyWithToken(token)`.
+Registers a new passkey using a setup token (emailed to the user).
 
-**Inputs:**
+**Inputs & outputs:**
 
-| Input | Type | Default | Description |
-|-------|------|---------|-------------|
+| Input / output | Type | Default | Description |
+|------|------|---------|-------------|
 | `token` | `string` | **(required)** | The setup token from the URL |
+| `(complete)` | `EventEmitter<void>` | (none) | Called after passkey registration |
+| `(error)` | `EventEmitter<Error>` | (none) | Called on any registration error, including an expired or invalid token |
 | `loginHref` | `string` | `'/auth/login'` | Link shown after successful registration |
-| `className` | `string` | `''` | CSS class applied to the card container |
-| `style` | `string` | `''` | Inline style applied to the card container |
 
-**Outputs:**
-
-| Output | Type | Description |
-|--------|------|-------------|
-| `complete` | `EventEmitter<void>` | Fires after passkey registration succeeds |
-| `error` | `EventEmitter<Error>` | Fires on any registration error, including an expired or invalid token — there's no separate "expired" signal, so a generic error message is shown either way |
-
-```ts
-// passkey-setup.component.ts
+```typescript
+// src/app/pages/auth/setup-passkey.component.ts
 import { Component, inject } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { map } from 'rxjs';
+import { ActivatedRoute, Router } from '@angular/router';
 import { PasskeySetupComponent } from '@nebulr-group/bridge-angular';
 
 @Component({
-  selector: 'app-passkey-setup',
+  selector: 'app-setup-passkey',
   standalone: true,
   imports: [PasskeySetupComponent],
   template: `
     <bridge-passkey-setup
-      [token]="token()"
+      [token]="token"
       loginHref="/auth/login"
+      (complete)="router.navigateByUrl('/auth/login')"
     />
   `,
 })
-export class PasskeySetupPageComponent {
-  private readonly route = inject(ActivatedRoute);
-  protected readonly token = toSignal(
-    this.route.queryParamMap.pipe(map((params) => params.get('token') ?? '')),
-    { initialValue: '' },
-  );
+export class SetupPasskeyPageComponent {
+  protected readonly router = inject(Router);
+  protected readonly token =
+    inject(ActivatedRoute).snapshot.paramMap.get('token') ?? '';
 }
 ```
 
 ## PasskeyRequestSetupLink
 
-`<bridge-passkey-request-setup-link>` is an email form that requests a passkey setup link be sent to the user (`sendPasskeySetupLink(email)`).
+An email form that requests a passkey setup link be sent to the user.
 
-**Inputs:**
+**Inputs & outputs:**
 
-| Input | Type | Default | Description |
-|-------|------|---------|-------------|
+| Input / output | Type | Default | Description |
+|------|------|---------|-------------|
 | `initialEmail` | `string` | `''` | Pre-filled email address |
+| `(back)` | `EventEmitter<void>` | (none) | Called when user clicks back |
+| `(sentEvent)` | `EventEmitter<void>` | (none) | Called after the setup link email is sent |
+| `(error)` | `EventEmitter<Error>` | (none) | Called on error |
 | `loginHref` | `string` | `'/auth/login'` | "Back to login" link, used when nothing is bound to `(back)` |
-| `className` | `string` | `''` | CSS class applied to the card container |
-| `style` | `string` | `''` | Inline style applied to the card container |
 
-**Outputs:**
-
-| Output | Type | Description |
-|--------|------|-------------|
-| `sentEvent` | `EventEmitter<void>` | Fires after the setup link email is sent |
-| `error` | `EventEmitter<Error>` | Fires on error |
-| `back` | `EventEmitter<void>` | Fires when "Back to login" is clicked, if bound. Unlike `loginHref`'s plain anchor, this lets a host intercept the action instead of navigating |
-
-```ts
+```typescript
 import { Component } from '@angular/core';
 import { PasskeyRequestSetupLinkComponent } from '@nebulr-group/bridge-angular';
 

@@ -1,8 +1,6 @@
 # Show or hide UI
 
-Declarative gating with optional fallback content. Project the "on" content as
-the default slot; use the `*bridgeFeatureFlagFallback` structural directive for
-the "off" case:
+The most common thing to do with a flag is decide whether a piece of UI renders at all. The `<bridge-feature-flag>` component does that declaratively, with optional fallback content for the off case:
 
 ```typescript
 import { Component } from '@angular/core';
@@ -32,17 +30,16 @@ import {
 export class DashboardPage {}
 ```
 
-The default projected content renders when the flag passes; the element marked
-with `*bridgeFeatureFlagFallback` renders when it doesn't. Both re-render in
-place whenever the flag changes (realtime push, token change, dev-attribute
-change).
+> **Framework note:** the default projected content renders when the flag
+> passes; the element marked with `*bridgeFeatureFlagFallback` renders when it
+> doesn't. Angular content projection can't hand the evaluated value into the
+> projected content the way Svelte snippets receive it. When you need the value
+> itself (a string, number, or JSON flag), read it with `bridge.flag` instead;
+> see [Use flags in your logic](/feature-flags/using/in-logic/).
 
 ## Sending context
 
-`<bridge-feature-flag>` takes the same per-call context as `bridge.flag`'s third
-argument, via the `[context]` input — use it when the rule targets an
-app-specific attribute Bridge doesn't already know (see [Send context from your
-code](/feature-flags/targeting/send-context/)):
+`<bridge-feature-flag>` takes the same per-call eval context (the identity and attributes a flag rule evaluates against) as `bridge.flag`'s third argument. Use it when the rule targets an app-specific attribute Bridge doesn't already know (see [Send context from your code](/feature-flags/targeting/send-context/)):
 
 ```typescript
 @Component({
@@ -64,10 +61,7 @@ export class DashboardPage {
 }
 ```
 
-Since `context` is a normal Angular input, it's reactive for free — Angular
-re-evaluates the bound expression (and re-renders the flag) whenever
-`projects.length` changes, no getter function needed the way the standalone
-`bridge.flag` accessor requires.
+Since `context` is a plain input, it's reactive for free: Angular re-evaluates the bound expression (and re-renders the flag) whenever `projects.length` changes, with no extra wiring needed the way the standalone `bridge.flag` accessor requires.
 
 **Inputs:**
 
@@ -75,6 +69,6 @@ re-evaluates the bound expression (and re-renders the flag) whenever
 |------|------|---------|-------------|
 | `key` | `string` | **(required)** | The flag key |
 | `defaultValue` | `T` | `false` | Safe value; also sets the flag's inferred type |
-| `context` | `Partial<EvalContext>` | — | Per-call eval context (attributes win on collision) |
-| default slot | content | — | Rendered when the flag passes |
-| `*bridgeFeatureFlagFallback` | content | — | Rendered when it doesn't |
+| `context` | `Partial<EvalContext>` | (none) | Per-call eval context (attributes win on collision) |
+| default slot | projected content | (none) | Rendered when the flag passes |
+| `*bridgeFeatureFlagFallback` | projected content | (none) | Rendered when it doesn't |

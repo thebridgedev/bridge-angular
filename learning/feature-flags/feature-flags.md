@@ -1,231 +1,69 @@
 ---
 title: Feature Flags
 order: 40
-oneLiner: Ship behind a flag and change who sees what — live from admin, no redeploy.
+oneLiner: Ship behind a flag and change who sees what, live from Control Center, no redeploy.
 related: [live-updates, payments]
 ---
 
 # Feature Flags
 
-Bridge Feature Flags evaluates locally — the SDK keeps the flag rules in memory, evaluates against in-process context, and receives rule changes live over a push channel. A flag check is an O(1) lookup: no network call, safe in render paths.
+Bridge Feature Flags lets you ship code dark, roll it out gradually, target it
+at specific users, and kill it instantly, all without a deploy. The SDK
+evaluates flags locally: it keeps your flag rules in memory, evaluates them
+against in-process context, and receives rule changes over the live channel (a
+persistent realtime connection the SDK maintains). A flag check is an O(1)
+lookup with no network call, safe in render paths.
 
-Flags work standalone: an `appId` is all the configuration you need. Bridge auth and billing are optional context sources (see "Bridge-managed attributes" below).
+Flags work standalone: an `appId` is all the configuration you need. Bridge
+auth and billing are optional context sources you can target on once they're
+enabled.
 
-### Setup
+## The mental model
 
-Bridge bootstraps flags automatically. `provideBridge(...)` wires an `APP_INITIALIZER` that mounts the realtime runtime and initializes Feature Flags 2.0 on the shared channel during app bootstrap — no flag-specific init call is needed:
+1. **You create a flag in Control Center** (your admin dashboard at
+   app.thebridge.dev) and give it rules: on/off, a percentage rollout, or
+   conditions on attributes like `user.role` or `tenant.plan`.
+2. **The SDK evaluates those rules locally** against the eval context: the
+   identity and attributes a flag rule evaluates against. Bridge auth and
+   billing feed attributes in automatically; your code can add its own.
+3. **Changes arrive live.** Edit a rule in Control Center and every connected
+   app updates in place, typically within seconds, over the live channel. No
+   refresh, no redeploy.
 
-```typescript
-// src/app/app.config.ts
-import { ApplicationConfig } from '@angular/core';
-import { provideRouter } from '@angular/router';
-import { provideBridge, type BridgeConfig } from '@nebulr-group/bridge-angular';
-import { routes } from './app.routes';
+For the full picture (evaluation model, outage behavior, connection status),
+read [How flags work](/feature-flags/how-it-works/).
 
-const bridgeConfig: BridgeConfig = {
-  appId: import.meta.env.NG_APP_BRIDGE_APP_ID, // only appId is required for flags-only apps
-};
+## Get started
 
-export const appConfig: ApplicationConfig = {
-  providers: [provideRouter(routes), provideBridge(bridgeConfig)],
-};
-```
+[Get started](/feature-flags/get-started/) walks the whole loop in a few
+minutes: wire up `provideBridge()`, create a flag in Control Center, read
+it with `bridge.flag`, then flip it and watch your app change live.
 
-Configuration comes from the same `provideBridge(config, routeConfig)` you already call — only `appId` is required for flags-only apps.
+## Using flags
 
-### bridge.flag — reactive flag values
+- [Show or hide UI](/feature-flags/using/show-hide-ui/): the declarative
+  `<bridge-feature-flag>` component, with fallback content for the off case.
+- [Use flags in your logic](/feature-flags/using/in-logic/): the `bridge.flag`
+  API for branching code paths, plus one-shot `bridge.evaluate` reads and
+  multi-type values (boolean, string, number, JSON).
+- [Guard routes](/feature-flags/using/guard-routes/): gate whole routes behind
+  a flag with `routeConfig` rules; the SDK's route guard redirects before the
+  route renders.
+- [Use flags on your backend](/feature-flags/using/backend/): forward the eval
+  context in the `x-bridge-context` header so your server and browser agree on
+  identity and bucketing.
 
-`BridgeService.flag(key, defaultValue, context?)` returns a `Signal<{ value, passed }>` — the Angular equivalent of bridge-svelte's `useFlag`:
+## Targeting
 
-```typescript
-import { Component, inject } from '@angular/core';
-import { BridgeService } from '@nebulr-group/bridge-angular';
-
-@Component({
-  selector: 'app-banner',
-  standalone: true,
-  template: `
-    @if (banner().value) {
-      <div class="banner">New stuff!</div>
-    }
-  `,
-})
-export class BannerComponent {
-  private readonly bridge = inject(BridgeService);
-  protected readonly banner = this.bridge.flag('show_banner', false);
-}
-```
-
-- **`value`** — the evaluated flag value, typed from your default (`boolean` | `string` | `number` | JSON object).
-- **`passed`** — whether a rule branch matched.
-- The result is **reactive**: when an admin changes the flag (or a live rule update arrives), the signal re-runs and your template updates in place.
-- The default is mandatory — it's what your app gets when the flag isn't configured or Bridge is unreachable. A flag call can never break your app.
-
-> **Tip:** Call `bridge.flag(...)` from a component/service injection context (a field initializer or constructor) because it builds an Angular `computed`. For one-shot, non-reactive reads use `bridge.evaluate(key, default, context?)`.
-
-### Per-call context
-
-The optional third argument supplies per-call identity/attributes. Per-call attributes win over everything else on key collision:
-
-```typescript
-protected readonly checkout = this.bridge.flag('new_checkout', false, {
-  attributes: { cart_size: this.cart.items.length },
-});
-```
-
-### App-wide attributes (`bridge.attributes`)
-
-For attributes that every flag evaluation should see — not just one call site — publish them once on the unified bridge surface:
-
-```typescript
-const bridge = inject(BridgeService);
-
-bridge.attributes.set('beta_cohort', true);                        // static value
-bridge.attributes.bind('cart_size', () => this.cart.items.length); // re-read on every eval
-bridge.attributes.bindMany(() => ({ theme, locale }));             // bulk getter
-```
-
-Precedence on key collision: per-call context > `bridge.attributes` > Bridge-managed providers. The `bridge:` namespace is reserved — writes to it are rejected with a console warning. See the [Live Updates guide](/live-updates/) for the full `bridge.attributes` API.
-
-### bridge-feature-flag component
-
-Declarative gating with optional fallback content. Project the "on" content as the default slot; use the `*bridgeFeatureFlagFallback` structural directive for the "off" case:
-
-```typescript
-import { Component } from '@angular/core';
-import {
-  FeatureFlagComponent,
-  BridgeFeatureFlagFallbackDirective,
-} from '@nebulr-group/bridge-angular';
-
-@Component({
-  standalone: true,
-  imports: [FeatureFlagComponent, BridgeFeatureFlagFallbackDirective],
-  template: `
-    <bridge-feature-flag key="new_dashboard" [defaultValue]="false">
-      <app-new-dashboard />
-    </bridge-feature-flag>
-
-    <!-- With fallback for the non-matching case: -->
-    <bridge-feature-flag key="premium_feature" [defaultValue]="false">
-      <button>Use premium feature</button>
-      <button *bridgeFeatureFlagFallback disabled title="Upgrade to unlock">
-        Premium (locked)
-      </button>
-    </bridge-feature-flag>
-  `,
-})
-export class DashboardPage {}
-```
-
-**Inputs:**
-
-| Input | Type | Default | Description |
-|------|------|---------|-------------|
-| `key` | `string` | **(required)** | The flag key |
-| `defaultValue` | `T` | `false` | Safe value; also sets the flag's inferred type |
-| `context` | `Partial<EvalContext>` | — | Per-call eval context (attributes win on collision) |
-| default slot | content | — | Rendered when the flag passes |
-| `*bridgeFeatureFlagFallback` | content | — | Rendered when it doesn't |
-
-### flagSignal — standalone helper
-
-For code outside a `BridgeService` injection (or when you want the helper directly), `flagSignal(key, default, context?)` returns the same `Signal<FlagEvalResult<T>>`:
-
-```typescript
-import { flagSignal } from '@nebulr-group/bridge-angular';
-
-protected readonly banner = flagSignal('show_banner', false);
-```
-
-### Multi-type values
-
-One API for boolean, string, number, and JSON flags — the type is inferred from the default:
-
-```typescript
-const isDark = this.bridge.flag('dark_mode', false);
-const cta    = this.bridge.flag('checkout_text', 'Submit');
-const limit  = this.bridge.flag('max_uploads', 10);
-const cfg    = this.bridge.flag('rate_limit', { window: 60, max: 100 });
-```
-
-A type mismatch (admin stored a different type than your default suggests) returns the default and logs a warning.
-
-### Identity & anonymous visitors
-
-The SDK manages identity for you:
-
-- On first load, it generates an anonymous ID and persists it (configurable: `persistent` localStorage / `session` sessionStorage / `none` in-memory) — anonymous visitors get stable bucketing for A/B tests and percentage rollouts.
-- With Bridge auth enabled, the session identity is used automatically and pre-login activity is linked on login.
-
-### Live connection status
-
-```typescript
-const bridge = inject(BridgeService);
-// reactive ConnectionState signal: 'idle' | 'connecting' | 'open' | 'closed'
-bridge.realtimeStatus();
-```
-
-When the live channel drops, flags freeze on last-known values and refetch on reconnect — your app keeps working through Bridge outages.
-
-### Bridge-managed attributes
-
-With Bridge auth and/or billing enabled, attributes like `bridge:user.role`, `bridge:tenant.plan`, and `bridge:billing.plan` merge into every evaluation automatically — no app code. Your own (dev-supplied) attributes always win on key collision, and the admin UI surfaces collisions on the flag detail page.
-
-With billing enabled this includes quota and entitlement attributes (`bridge:billing.quota.<metric>.*`, `bridge:billing.entitlement.<name>`) — the recommended way to gate plan-granted features is a flag whose rule targets an entitlement attribute. See the [Payments guide's Entitlements section](/billing/limits/lock-features/) for the pattern.
-
-### Propagating context to your backend
-
-If your backend also evaluates flags for the same user, forward the eval context so both sides agree on identity and bucketing. The SDK serializes the context into the `x-bridge-context` header; backend SDKs (e.g. `@nebulr-group/bridge-nestjs/flags` with `BridgeContextInterceptor`) pick it up automatically.
-
-Only propagate identity and attributes the backend can't derive itself — never `role`/`plan`-style attributes (the backend reads those from its own verified sources).
-
-### Under the hood
-
-- **No network on read** — `bridge.flag` / `<bridge-feature-flag>` evaluate against an in-memory rule cache (an O(1) lookup); there is no request per flag check, so they are safe in render paths.
-- **Live rule updates** arrive over the realtime channel as `flag.updated` / `flag.removed` messages and update values in place — no refresh, no flicker.
-- **Telemetry** evaluations are batched and reported in the background, off the render path.
-- **Bootstrap** warms the rule cache during `provideBridge()`'s `APP_INITIALIZER`; the route guard shares that same cache for `featureFlag` route rules.
-
-### Percentage rollout
-
-Roll a feature out to a fraction of users instead of flipping it for everyone. In admin, give the flag a rule with a percentage (say 10%) — the SDK evaluates it client-side against a **stable bucket** derived from the visitor's identity:
-
-```typescript
-// No code change for rollout — the percentage lives in the flag rule.
-protected readonly newCheckout = this.bridge.flag('new_checkout', false);
-```
-
-```html
-@if (newCheckout().value) {
-  <app-new-checkout />
-} @else {
-  <app-old-checkout />
-}
-```
-
-- **Sticky buckets** — the same identity always lands in the same bucket, so a user who's in the 10% stays in as you ramp to 25%, 50%, 100%. No flicker, no re-rolling.
-- **Anonymous visitors** get a persisted anonymous ID (see Identity above), so they bucket consistently before they ever sign in; on login, pre-login activity links to the authenticated identity.
-- **A/B cohorts** — a multi-variant flag (string/number/JSON) splits traffic into buckets and returns the variant for each, giving you experiment arms with the same sticky guarantee.
-- **Combine with rules** — a rollout can sit behind a segment (e.g. 10% *of users whose `plan = pro`*), because the percentage applies after the rule's attribute conditions match.
-
-Because the percentage and segments live in the flag rule, ramping a rollout or killing it is an admin action — your deployed code never changes.
-
-### Route-level flags
-
-Gate entire routes behind flags with `routeConfig` rules:
-
-```typescript
-import type { RouteGuardConfig } from '@nebulr-group/bridge-angular';
-
-const routeConfig: RouteGuardConfig = {
-  rules: [
-    { match: '/', public: true },
-    { match: '/premium/*', featureFlag: 'premium-feature', redirectTo: '/upgrade' },
-    { match: '/beta/*', featureFlag: { any: ['beta-feature', 'internal'] }, redirectTo: '/' },
-  ],
-  defaultAccess: 'protected',
-};
-```
-
-A `featureFlag` requirement on a route rule is evaluated by `bridgeAuthGuard()` before the route renders — it reads the hydrated FF 2.0 flag cache, independent of the in-component `bridge.flag` / `<bridge-feature-flag>` surface. The runtime warms the flag cache at bootstrap, so no extra setup is needed: declare the rule and the guard redirects when the flag is off.
+- [Target by plan or role](/feature-flags/targeting/by-plan-or-role/): with
+  Bridge auth or billing enabled, attributes like `user.role`, `tenant.plan`,
+  and `bridge:billing.*` merge into every evaluation with no app code. For
+  plan-granted features, prefer entitlement attributes; see
+  [Lock features to a plan](/billing/limits/lock-features/).
+- [Send context from your code](/feature-flags/targeting/send-context/):
+  supply app-specific facts (like a project count) per call or app-wide via
+  `bridge.attributes` on the `BridgeService`. The full attributes API is in
+  the [Live Updates guide](/live-updates/).
+- [Target anonymous visitors](/feature-flags/targeting/anonymous/): visitors
+  who aren't signed in get a persisted anonymous ID and stable bucketing, so
+  percentage rollouts and A/B tests work before signup and never flicker.

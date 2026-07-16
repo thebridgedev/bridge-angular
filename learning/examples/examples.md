@@ -99,7 +99,7 @@ Bridge automatically handles token renewal. The `AuthService` refreshes tokens b
 
 ### Checking Authentication Status
 
-Use `AuthService` to check whether a user is logged in. Services expose Angular signals — call them as functions in templates or via `computed()`.
+Use `AuthService` to check whether a user is logged in. Services expose Angular signals; call them as functions in templates or via `computed()`.
 
 ```ts
 // src/app/components/auth-status/auth-status.component.ts
@@ -196,7 +196,7 @@ export class NavbarComponent {
 
   async handleLogout() {
     await this.authService.logout();
-    // authService.logout() redirects via window.location — navigation below is a fallback
+    // authService.logout() redirects via window.location; navigation below is a fallback
     await this.router.navigate(['/']);
   }
 }
@@ -228,7 +228,7 @@ import { FeatureFlagComponent } from '@nebulr-group/bridge-angular';
   imports: [FeatureFlagComponent],
   template: `
     <bridge-feature-flag flagName="beta-feature">
-      <div>The "beta-feature" flag is enabled — welcome to beta!</div>
+      <div>The "beta-feature" flag is enabled; welcome to beta!</div>
     </bridge-feature-flag>
   `,
 })
@@ -346,7 +346,7 @@ provideBridge(
 
 ### Global Flag Plus Per-Route Criteria
 
-To require a global flag "A" for all protected routes, use a catch-all rule at the end. The first matching rule wins — put specific routes first:
+To require a global flag "A" for all protected routes, use a catch-all rule at the end. The first matching rule wins; put specific routes first:
 
 ```ts
 provideBridge(
@@ -369,7 +369,7 @@ provideBridge(
 ```
 
 Notes:
-- Order matters — place specific rules before the global catch-all.
+- Order matters: place specific rules before the global catch-all.
 - Public routes bypass feature flag checks entirely.
 
 ### Usage Service Pattern for Plan Limits
@@ -581,7 +581,7 @@ export class ManageBillingComponent {
 ## Team Management
 
 Add team and user management to any page using `<bridge-team-panel>`. It renders the team
-UI natively in-app (no iframe, no handover) via auth-core's `TeamService` — no extra
+UI natively in-app (no iframe, no handover) via auth-core's `TeamService`; no extra
 configuration is needed beyond `provideBridge`.
 
 ```ts

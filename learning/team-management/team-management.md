@@ -1,6 +1,6 @@
 # Team Management
 
-The SDK team panel renders directly inside your app — no redirect to a separate portal,
+The SDK team panel renders directly inside your app: no redirect to a separate portal,
 no iframe. It is backed by auth-core's `TeamService`.
 
 ## Minimum integration
@@ -19,10 +19,10 @@ export class TeamComponent {}
 ```
 
 That single component handles:
-- **Users tab** — list, add (`<bridge-team-add-user-dialog>`), edit role/enabled
+- **Users tab**: list, add (`<bridge-team-add-user-dialog>`), edit role/enabled
   (`<bridge-team-edit-user-dialog>`), reset password, delete.
-- **Profile tab** — `<bridge-team-profile-form>` for the current user.
-- **Workspace tab** — `<bridge-team-workspace-form>` for tenant-wide settings.
+- **Profile tab**: `<bridge-team-profile-form>` for the current user.
+- **Workspace tab**: `<bridge-team-workspace-form>` for tenant-wide settings.
 
 ## Toggling tabs
 
@@ -35,11 +35,11 @@ That single component handles:
 | `defaultTab` | `'users' \| 'profile' \| 'workspace'` | `'users'` | Which tab is active by default |
 | `showProfileTab` | `boolean` | `true` | Show the profile tab |
 | `showWorkspaceTab` | `boolean` | `true` | Show the workspace tab |
-| `error` (output) | `EventEmitter<Error>` | — | Emitted on any error |
+| `error` (output) | `EventEmitter<Error>` | (none) | Emitted on any error |
 
 ## Using sub-components directly
 
-Each tab is also exported as a standalone component — use these when you only need one
+Each tab is also exported as a standalone component; use these when you only need one
 piece, or want to build your own layout:
 
 ```ts

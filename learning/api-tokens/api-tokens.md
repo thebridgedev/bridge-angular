@@ -34,7 +34,7 @@ The component provides:
 | `className` | `string` | `''` | Class applied to the root element |
 | `style` | `string` | `''` | Inline style applied to the root element |
 
-The structural CSS ships in `@nebulr-group/bridge-angular/styles.css` — import it once in your root `styles.css`:
+The structural CSS ships in `@nebulr-group/bridge-angular/styles.css`; import it once in your root `styles.css`:
 
 ```css
 @import '@nebulr-group/bridge-angular/styles.css';

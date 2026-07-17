@@ -122,8 +122,9 @@ export class BillingNoticeComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this._sub = createSubscriptionSignal();
     const subscription = useBridge().subscription;
-    const ctx = this.authService.getBridgeAuth().getApiContext();
-    if (ctx.accessToken) this.isBillingAdmin.set(true);
+    const bridge = this.authService.getBridgeAuth();
+    const ctx = bridge.getApiContext();
+    if (ctx.accessToken) this.isBillingAdmin.set(bridge.canManageBilling());
     if (!ctx.accessToken) {
       subscription.setError('Not authenticated');
       return;

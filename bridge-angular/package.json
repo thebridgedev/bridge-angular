@@ -1,6 +1,6 @@
 {
   "name": "@nebulr-group/bridge-angular",
-  "version": "0.4.0-beta.4",
+  "version": "0.4.0-beta.5",
   "description": "Bridge Angular library. Adds Bridge authentication, feature flags, and payments to your Angular application.",
   "author": "Iman Pouya",
   "license": "MIT",

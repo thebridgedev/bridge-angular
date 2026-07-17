@@ -16,12 +16,14 @@
  * builds the absolute Stripe return URL (routing through the OAuth-callback
  * confirm-checkout handler) internally.
  */
+import { NgTemplateOutlet } from '@angular/common';
 import {
   Component,
   EventEmitter,
   Input,
   OnInit,
   Output,
+  TemplateRef,
   computed,
   inject,
 } from '@angular/core';
@@ -32,12 +34,14 @@ import { PlanSelectorComponent } from './plan-selector.component';
 @Component({
   selector: 'bridge-paywall',
   standalone: true,
-  imports: [PlanSelectorComponent],
+  imports: [PlanSelectorComponent, NgTemplateOutlet],
   template: `
     @if (showPaywall()) {
       <div class="bridge-paywall" role="dialog" aria-modal="true" aria-label="Choose a plan">
         <div class="bridge-paywall-panel">
-          @if (heading) {
+          @if (headingTemplate) {
+            <ng-container [ngTemplateOutlet]="headingTemplate"></ng-container>
+          } @else if (heading) {
             <h2 class="bridge-paywall-heading">{{ heading }}</h2>
           } @else {
             <h2 class="bridge-paywall-heading">Choose a plan</h2>
@@ -59,8 +63,15 @@ export class PaywallComponent implements OnInit {
   @Input() successRedirect = '/';
   /** Where to send the user if they cancel Stripe Checkout. @default '/' */
   @Input() cancelRedirect = '/';
-  /** Override the default "Choose a plan" heading. */
+  /** Override the default "Choose a plan" heading (plain-text). */
   @Input() heading?: string;
+  /**
+   * Optional custom heading template (parity with bridge-svelte's `heading`
+   * snippet). Rendered in place of the default heading. No context. Takes
+   * precedence over the plain-text `heading` input; when neither is supplied the
+   * default "Choose a plan" heading renders (backward compatible).
+   */
+  @Input() headingTemplate?: TemplateRef<unknown>;
   /** Called after free-plan or direct plan change (not the Stripe redirect path). */
   @Output() select = new EventEmitter<{ plan: Plan; price: PriceOfferSdk }>();
 

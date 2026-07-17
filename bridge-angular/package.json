@@ -14,7 +14,9 @@
   "homepage": "https://thebridge.dev",
   "scripts": {
     "build": "ng-packagr -p ng-package.json",
-    "package": "npm run build && cd dist && npm pack --pack-destination ../"
+    "package": "npm run build && cd dist && npm pack --pack-destination ../",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "sideEffects": false,
   "exports": {

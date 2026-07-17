@@ -24,8 +24,12 @@ export interface BridgeConfig {
   defaultRedirectRoute?: string;
 
   /**
-   * Route to redirect to when authentication fails
-   * @default '/login'
+   * In-app login route. When set (SDK mode), the route guard redirects an
+   * unauthenticated user hitting a protected route to this in-app route instead
+   * of the hosted auth portal. When unset (hosted mode, the default), the guard
+   * redirects to the hosted auth portal via `createLoginUrl()`. Mirrors
+   * bridge-svelte's `loginRoute`.
+   * @default undefined (hosted mode)
    */
   loginRoute?: string;
 

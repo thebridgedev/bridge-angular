@@ -100,6 +100,7 @@ async function getNavigationDecision(
   bridge: BridgeService,
   paywallRoute?: string,
   isAuthCallbackInFlight = false,
+  loginRoute?: string,
 ): Promise<NavigationDecision> {
   const authenticated = authService.isAuthenticated();
   const isPublic = isPublicRoute(pathname, config);
@@ -110,8 +111,17 @@ async function getNavigationDecision(
     authenticated,
   });
 
-  // Redirect to login if protected and not authenticated
+  // Redirect to login if protected and not authenticated. Mirrors bridge-svelte's
+  // BridgeBootstrap login decision (BridgeBootstrap.ts §4):
+  //   - SDK mode: consumer set `loginRoute` → redirect to that in-app login view
+  //   - Hosted mode (default): no `loginRoute` → redirect to the hosted auth portal
   if (!isPublic && !authenticated) {
+    if (loginRoute) {
+      logger.debug(
+        `[route-guard] path ${pathname} is protected and user is not authenticated; redirecting to in-app loginRoute ${loginRoute}`,
+      );
+      return { type: 'redirect', to: loginRoute };
+    }
     logger.debug(`[route-guard] path ${pathname} is protected and user is not authenticated`);
     return { type: 'login', loginUrl: authService.createLoginUrl() };
   }
@@ -178,13 +188,17 @@ export function bridgeAuthGuard(): CanActivateFn {
       return true;
     }
 
-    // Read the optional billing.paywallRoute. Tolerate config not being loaded
-    // (the route guard must never throw on a missing billing config).
+    // Read the optional billing.paywallRoute and loginRoute. Tolerate config not
+    // being loaded (the route guard must never throw on a missing config).
     let paywallRoute: string | undefined;
+    let loginRoute: string | undefined;
     try {
-      paywallRoute = configService.getConfig().billing?.paywallRoute;
+      const cfg = configService.getConfig();
+      paywallRoute = cfg.billing?.paywallRoute;
+      loginRoute = cfg.loginRoute;
     } catch {
       paywallRoute = undefined;
+      loginRoute = undefined;
     }
 
     const [pathname, search = ''] = state.url.split('?');
@@ -196,6 +210,11 @@ export function bridgeAuthGuard(): CanActivateFn {
       callbackParams.has('stripe_success') ||
       callbackParams.has('stripe_cancel');
 
+    // Guard against a redirect loop: never redirect the in-app login route to
+    // itself (it should be a public route, but be defensive).
+    const effectiveLoginRoute =
+      loginRoute && loginRoute !== pathname ? loginRoute : undefined;
+
     const decision = await getNavigationDecision(
       pathname,
       routeConfig,
@@ -203,6 +222,7 @@ export function bridgeAuthGuard(): CanActivateFn {
       bridge,
       paywallRoute,
       isAuthCallbackInFlight,
+      effectiveLoginRoute,
     );
 
     switch (decision.type) {

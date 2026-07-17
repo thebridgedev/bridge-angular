@@ -93,6 +93,7 @@ export { ProfileNameComponent } from './lib/components/profile-name/profile-name
 
 // Subscription / Billing 2.0 drop-in components.
 export { PlanSelectorComponent } from './lib/components/subscription/plan-selector.component';
+export type { PlanCardTemplateContext } from './lib/components/subscription/plan-selector.component';
 export { SubscriptionStatusComponent } from './lib/components/subscription/subscription-status.component';
 export { BillingNoticeComponent } from './lib/components/subscription/billing-notice.component';
 export { PaywallComponent } from './lib/components/subscription/paywall.component';

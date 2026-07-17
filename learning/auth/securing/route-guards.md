@@ -1,8 +1,11 @@
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
 # Route guards
 
-Pass a `RouteGuardConfig` as the second argument to `provideBridge()` in `app.config.ts`, then apply `bridgeAuthGuard()` via `canActivateChild` on the route(s) you want protected.
+Pass `routeConfig` as the second argument to `provideBridge` in `app.config.ts`, then apply `bridgeAuthGuard()` via `canActivateChild` in `app.routes.ts`; it handles navigation guards automatically.
 
-**app.config.ts:**
+<Tabs>
+<TabItem label="app.config.ts">
 
 ```ts
 import { ApplicationConfig } from '@angular/core';
@@ -10,16 +13,15 @@ import { provideRouter } from '@angular/router';
 import { provideBridge, type BridgeConfig, type RouteGuardConfig } from '@nebulr-group/bridge-angular';
 import { routes } from './app.routes';
 
-const bridgeConfig: BridgeConfig = {
+const config: BridgeConfig = {
   appId: import.meta.env.NG_APP_BRIDGE_APP_ID,
-  loginRoute: '/auth/login',
 };
 
 const routeConfig: RouteGuardConfig = {
   rules: [
     { match: '/', public: true },
-    { match: /^\/auth($|\/)/, public: true },
-    { match: '/beta/*', featureFlag: 'beta-feature', redirectTo: '/' },
+    { match: new RegExp('^/auth($|/)'), public: true },
+    { match: '/beta/*', featureFlag: 'beta_feature', redirectTo: '/' },
   ],
   defaultAccess: 'protected',
 };
@@ -27,12 +29,13 @@ const routeConfig: RouteGuardConfig = {
 export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes),
-    provideBridge(bridgeConfig, routeConfig),
+    provideBridge(config, routeConfig),
   ],
 };
 ```
 
-**app.routes.ts:**
+</TabItem>
+<TabItem label="app.routes.ts">
 
 ```ts
 import { Routes } from '@angular/router';
@@ -52,20 +55,17 @@ export const routes: Routes = [
 ];
 ```
 
-`bridgeAuthGuard()` returns a standard Angular `CanActivateFn`. Applying it via `canActivateChild` on a parent route checks every child route automatically — you don't add it to each route individually.
+</TabItem>
+</Tabs>
+
+> **Framework note:** `bridgeAuthGuard()` returns a standard Angular `CanActivateFn`. Applying it via `canActivateChild` on a parent route checks every child route automatically, so you don't add it to each route individually. It reads the rules from the `routeConfig` you passed to `provideBridge`.
 
 **How it works:**
 
 | Option | What it does |
 |--------|--------------|
 | `defaultAccess` | Sets whether unmatched routes are `'public'` or `'protected'`. |
-| `rules` | Marks individual paths as public and/or gates them behind a feature flag. `match` accepts an exact string, a wildcard string (`'/beta/*'`), or a `RegExp`. |
-| `featureFlag` | A flag key, `{ any: [...] }`, or `{ all: [...] }`. Evaluated against the hydrated Feature Flags 2.0 cache — no network round trip per navigation. |
-| `redirectTo` | Where to send a user who fails the `featureFlag` requirement. Defaults to `'/'`. |
-| `loginRoute` (on `BridgeConfig`) | Unauthenticated users hitting a protected route are redirected here (in-app), instead of Bridge's hosted login page. Leave it unset to use hosted auth — see the [hosted quickstart](../../quickstart/hosted-quickstart.md). |
+| `rules` | Marks individual paths as public and/or gates them behind feature flags. |
+| Unauthenticated access | Unauthenticated users hitting a protected route are redirected to Bridge's hosted login page. |
 
-Redirects are handled automatically inside `bridgeAuthGuard()` — it returns `true` (allow), a `UrlTree` (redirect), or triggers `window.location.href` for an out-of-app redirect to the hosted login page.
-
-## The paywall redirect
-
-If your `BridgeConfig` sets `billing.paywallRoute`, the same guard also redirects an authenticated tenant that hasn't selected a plan to that route before a protected page renders — gated on `getSubscriptionStatus().shouldSelectPlan` (and skipped when `paymentsAutoRedirect` is `false`, or while a Stripe/OAuth callback is in flight). See [Configurations](../config/config.md) for the full `billing` options.
+Redirects are handled automatically by `bridgeAuthGuard()`. For the full `RouteRule` shape, and the billing paywall redirect driven by `billing.paywallRoute`, see the [config reference](/auth/config/#route-guard-config).

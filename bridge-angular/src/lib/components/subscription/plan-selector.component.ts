@@ -18,18 +18,39 @@
  * `cancelRedirect`. Mirrors bridge-svelte's BridgeBootstrap and bridge-react's
  * CallbackHandler.
  */
+import { NgTemplateOutlet } from '@angular/common';
 import {
   Component,
   EventEmitter,
   Input,
   OnInit,
   Output,
+  TemplateRef,
   computed,
   inject,
   signal,
 } from '@angular/core';
 import type { Plan, PriceOfferSdk } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../../shared/services/auth.service';
+
+/**
+ * Context passed to a custom `planCardTemplate`. Mirrors the data the
+ * bridge-svelte `planCard` snippet receives:
+ * `{ plan, prices, isCurrent, onPick }`. Exposed on `$implicit` so consumers can
+ * write `<ng-template let-ctx>` or destructure via `let-plan="plan"` etc.
+ */
+export interface PlanCardTemplateContext {
+  $implicit: {
+    plan: Plan;
+    prices: PriceOfferSdk[];
+    isCurrent: boolean;
+    onPick: (price: PriceOfferSdk) => void;
+  };
+  plan: Plan;
+  prices: PriceOfferSdk[];
+  isCurrent: boolean;
+  onPick: (price: PriceOfferSdk) => void;
+}
 
 type UiState =
   | 'idle'
@@ -42,6 +63,7 @@ type UiState =
 @Component({
   selector: 'bridge-plan-selector',
   standalone: true,
+  imports: [NgTemplateOutlet],
   template: `
     <div
       [class]="className"
@@ -51,9 +73,13 @@ type UiState =
       [attr.data-state]="uiState()"
     >
       @if (loading()) {
-        <div class="bridge-plan-loading">
-          <span class="bridge-spinner" aria-label="Loading"></span>
-        </div>
+        @if (loadingStateTemplate) {
+          <ng-container [ngTemplateOutlet]="loadingStateTemplate"></ng-container>
+        } @else {
+          <div class="bridge-plan-loading">
+            <span class="bridge-spinner" aria-label="Loading"></span>
+          </div>
+        }
       } @else if (storeError()) {
         <div class="bridge-alert bridge-alert-error" role="alert">{{ storeError() }}</div>
       } @else {
@@ -77,10 +103,20 @@ type UiState =
         }
 
         @if (plans() && plans()!.length === 0) {
-          <p class="bridge-plan-empty">No plans available.</p>
+          @if (emptyStateTemplate) {
+            <ng-container [ngTemplateOutlet]="emptyStateTemplate"></ng-container>
+          } @else {
+            <p class="bridge-plan-empty">No plans available.</p>
+          }
         } @else if (plans()) {
           <div class="bridge-plan-cards" data-bridge-plan-cards>
             @for (plan of plans(); track plan.key) {
+              @if (planCardTemplate) {
+                <ng-container
+                  [ngTemplateOutlet]="planCardTemplate"
+                  [ngTemplateOutletContext]="planCardContext(plan)"
+                ></ng-container>
+              } @else {
               <div
                 data-bridge-plan-card
                 [attr.data-current]="plan.key === currentPlanKey()"
@@ -128,6 +164,7 @@ type UiState =
                   }
                 </div>
               </div>
+              }
             }
           </div>
         }
@@ -144,6 +181,28 @@ export class PlanSelectorComponent implements OnInit {
   @Input() style = '';
   /** Emitted after a free-plan or direct plan change (not the Stripe redirect path). */
   @Output() select = new EventEmitter<{ plan: Plan; price: PriceOfferSdk }>();
+
+  /**
+   * Optional custom plan-card template (parity with bridge-svelte's `planCard`
+   * snippet). Rendered once per plan in place of the default card. Context is
+   * exposed on `$implicit` (and as named keys) as
+   * `{ plan, prices, isCurrent, onPick }` — call `onPick(price)` to trigger the
+   * same checkout/select flow the default card's buttons use. When omitted, the
+   * default card renders (backward compatible).
+   */
+  @Input() planCardTemplate?: TemplateRef<PlanCardTemplateContext>;
+  /**
+   * Optional custom empty-state template (parity with svelte's `emptyState`
+   * snippet). Rendered when the plan list is empty. No context. Falls back to
+   * the default "No plans available." message.
+   */
+  @Input() emptyStateTemplate?: TemplateRef<unknown>;
+  /**
+   * Optional custom loading template (parity with svelte's `loadingState`
+   * snippet). Rendered while the subscription slice is loading. No context.
+   * Falls back to the default spinner.
+   */
+  @Input() loadingStateTemplate?: TemplateRef<unknown>;
 
   private readonly authService = inject(AuthService);
 
@@ -176,6 +235,24 @@ export class PlanSelectorComponent implements OnInit {
     if (!this.status() && !this.loading()) {
       void this.authService.loadSubscription();
     }
+  }
+
+  /**
+   * Builds the `ngTemplateOutletContext` for a custom `planCardTemplate`. Carries
+   * the same data the bridge-svelte `planCard` snippet received. `onPick` is a
+   * per-plan closure over `handlePick` so a custom card can trigger checkout /
+   * plan selection exactly like the default card's buttons.
+   */
+  protected planCardContext(plan: Plan): PlanCardTemplateContext {
+    const isCurrent = plan.key === this.currentPlanKey();
+    const onPick = (price: PriceOfferSdk) => this.handlePick(plan, price);
+    return {
+      $implicit: { plan, prices: plan.prices, isCurrent, onPick },
+      plan,
+      prices: plan.prices,
+      isCurrent,
+      onPick,
+    };
   }
 
   async handlePick(plan: Plan, price: PriceOfferSdk): Promise<void> {

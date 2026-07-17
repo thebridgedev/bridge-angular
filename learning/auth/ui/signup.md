@@ -1,25 +1,20 @@
 # Signup
 
-A signup form with email, first name, and last name fields.
+A signup form with email, first name, and last name fields. There is no password step here: the user activates the account through the verification email, then signs in with whichever method your app enables.
 
-**`bridge-signup-form` (`SignupFormComponent`):**
+**Inputs & outputs:**
 
-| Input | Type | Default | Description |
+| Input / output | Type | Default | Description |
 |------|------|---------|-------------|
+| `(signup)` | `EventEmitter<void>` | (none) | Called after successful signup |
+| `(error)` | `EventEmitter<Error>` | (none) | Called on signup error |
 | `showLoginLink` | `boolean` | `true` | Show a link to the login page |
 | `loginHref` | `string` | `'/auth/login'` | Login page URL |
 | `heading` | `string` | `'Create your account'` | Custom heading text |
-| `className` | `string` | `''` | Forwarded to the form wrapper's `class` |
-| `style` | `string` | `''` | Forwarded to the form wrapper's `style` |
-
-| Output | Type | Description |
-|--------|------|-------------|
-| `signup` | `EventEmitter<void>` | Emitted after successful signup |
-| `error` | `EventEmitter<Error>` | Emitted on signup error |
 
 **Usage:**
 
-```ts
+```typescript
 import { Component, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { SignupFormComponent } from '@nebulr-group/bridge-angular';
@@ -32,17 +27,13 @@ import { SignupFormComponent } from '@nebulr-group/bridge-angular';
     <bridge-signup-form
       [showLoginLink]="true"
       loginHref="/auth/login"
-      (signup)="onSignup()"
+      (signup)="router.navigateByUrl('/auth/login')"
       (error)="onError($event)"
     />
   `,
 })
 export class SignupPageComponent {
-  private readonly router = inject(Router);
-
-  onSignup(): void {
-    this.router.navigateByUrl('/auth/login');
-  }
+  protected readonly router = inject(Router);
 
   onError(err: Error): void {
     console.error(err);
@@ -50,4 +41,6 @@ export class SignupPageComponent {
 }
 ```
 
-After signup, the user receives a verification email. Once verified, they can log in.
+After signup, the user receives a verification email. Once verified, they can sign in.
+
+> **Tip:** `bridge-login-form`'s signup link points to `/auth/signup` unless you override it with its `signupHref` input; register your signup page on that route and the two components link up out of the box. See [Email & password](/auth/ui/email-password/).

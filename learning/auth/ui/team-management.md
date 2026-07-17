@@ -2,25 +2,21 @@
 
 ## TeamManagementPanel
 
-A drop-in panel (`bridge-team-panel` / `TeamManagementPanelComponent`) for managing team members, team profile, and workspace settings. Renders three tabs: **Users**, **Profile**, and **Workspace**.
+A drop-in panel for managing team members, team profile, and workspace settings. Renders three tabs: **Users**, **Profile**, and **Workspace**.
 
-**Props:**
+**Inputs & outputs:**
 
-| Input | Type | Default | Description |
+| Input / output | Type | Default | Description |
 |------|------|---------|-------------|
 | `defaultTab` | `'users' \| 'profile' \| 'workspace'` | `'users'` | Which tab is active by default |
 | `showProfileTab` | `boolean` | `true` | Show the profile tab |
 | `showWorkspaceTab` | `boolean` | `true` | Show the workspace tab |
-| `className` | `string` | `''` | Forwarded to the root element's `class` |
-| `style` | `string` | `''` | Forwarded to the root element's `style` |
-
-| Output | Type | Description |
-|--------|------|-------------|
-| `error` | `EventEmitter<Error>` | Emitted on any error from the active tab |
+| `(error)` | `EventEmitter<Error>` | (none) | Called on any error |
 
 **Usage:**
 
-```ts
+```typescript
+// src/app/pages/settings/team.component.ts
 import { Component } from '@angular/core';
 import { TeamManagementPanelComponent } from '@nebulr-group/bridge-angular';
 
@@ -42,9 +38,13 @@ export class TeamSettingsComponent {
 }
 ```
 
-**Custom tab bar** — project an `<ng-template>` marked with the `bridgeTeamTabBar` directive. Its implicit context provides `{ tabs, activeTab, setTab }`:
+**Custom tab bar:**
 
-```ts
+> **Framework note:** instead of a snippet prop, project an `<ng-template>`
+> marked with the `bridgeTeamTabBar` directive. Its context provides
+> `{ tabs, activeTab, setTab }`.
+
+```typescript
 import { Component } from '@angular/core';
 import { TeamManagementPanelComponent, TeamTabBarDirective } from '@nebulr-group/bridge-angular';
 
@@ -73,15 +73,15 @@ export class TeamSettingsComponent {}
 ```
 
 The panel includes:
-- **Users tab** (`bridge-team-user-list`) — list team members, invite new users, update roles, reset passwords, and remove members (all with confirmation dialogs).
-- **Profile tab** (`bridge-team-profile-form`) — update the current user's first/last name; email and role are shown read-only.
-- **Workspace tab** (`bridge-team-workspace-form`) — update workspace name and locale; logo, plan, and MFA status are shown read-only.
+- **Users tab**: list team members, invite new users, update roles, remove members.
+- **Profile tab**: update team name and other profile fields.
+- **Workspace tab**: update workspace settings.
 
 ## Individual tab components
 
 Each tab is also exported as a standalone component. Use these when you only need one piece of team management, or want to build your own layout:
 
-```ts
+```typescript
 import { Component } from '@angular/core';
 import {
   TeamUserListComponent,
@@ -112,5 +112,3 @@ export class CustomTeamLayoutComponent {
 ```
 
 All three accept `className` and `style` inputs, and emit an `error` output.
-
-`bridge-team-user-list` composes several internal dialogs to power add/edit/delete/reset-password flows — `TeamAddUserDialogComponent`, `TeamEditUserDialogComponent`, `TeamConfirmDialogComponent`, and `TeamUserActionsMenuComponent`. These are also exported from `@nebulr-group/bridge-angular` for advanced consumers assembling a fully custom user-management UI, but you don't need to use them directly for the drop-in components above.

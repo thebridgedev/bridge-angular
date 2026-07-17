@@ -13,8 +13,11 @@ const DEFAULT_CONFIG: Partial<BridgeConfig> = {
   authBaseUrl: 'https://api.thebridge.dev/auth',
   cloudViewsUrl: 'https://api.thebridge.dev/cloud-views',
   defaultRedirectRoute: '/',
-  loginRoute: '/login',
   debug: false,
+  // NOTE: `loginRoute` is intentionally NOT defaulted. Mirroring bridge-svelte,
+  // an unset `loginRoute` means "hosted mode" — the route guard redirects to the
+  // hosted auth portal (`createLoginUrl()`). Only when the consumer explicitly
+  // sets `loginRoute` does the guard redirect to that in-app login view.
 };
 
 @Injectable({ providedIn: 'root' })

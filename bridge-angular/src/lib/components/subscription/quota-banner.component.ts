@@ -108,10 +108,10 @@ export class QuotaBannerComponent implements OnChanges, OnDestroy {
       this._quota?.destroy();
       this._quota = createQuotaSignal(this.metric);
     }
-    // Role variant: any authenticated user is treated as billing admin in US-11.
+    // Role variant. v1 policy: workspace owner only, via canManageBilling()
+    // (immutable OWNER role key).
     try {
-      const ctx = this.authService.getBridgeAuth().getApiContext();
-      if (ctx.accessToken) this.isBillingAdmin.set(true);
+      this.isBillingAdmin.set(this.authService.getBridgeAuth().canManageBilling());
     } catch {
       /* no BridgeAuth instance — member variant */
     }

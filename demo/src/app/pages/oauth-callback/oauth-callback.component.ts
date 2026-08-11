@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { AuthService, BridgeConfigService } from '@nebulr-group/bridge-angular';
+import { AuthService } from '@nebulr-group/bridge-angular';
 
 @Component({
   selector: 'app-oauth-callback',
@@ -21,22 +21,7 @@ export class OAuthCallbackComponent implements OnInit {
     private route: ActivatedRoute,
     private router: Router,
     private authService: AuthService,
-    private configService: BridgeConfigService,
   ) {}
-
-  /**
-   * Where a failed Stripe checkout confirmation lands. Honors the SDK's
-   * `billing.paymentErrorRoute` config, falling back to '/payment-error'
-   * (mirrors bridge-svelte's `getConfig().billing?.paymentErrorRoute ??
-   * '/payment-error'`).
-   */
-  private get paymentErrorRoute(): string {
-    try {
-      return this.configService.getConfig().billing?.paymentErrorRoute ?? '/payment-error';
-    } catch {
-      return '/payment-error';
-    }
-  }
 
   async ngOnInit(): Promise<void> {
     const params = this.route.snapshot.queryParamMap;
@@ -56,21 +41,10 @@ export class OAuthCallbackComponent implements OnInit {
       // reads shouldSelectPlan:false, reload the subscription store, then
       // redirect. Mirrors bridge-react's CallbackHandler.
       if (stripeSuccess && sessionId) {
-        const bridge = this.authService.getBridgeAuth();
-        const ctx = bridge.getApiContext();
-        const res = await fetch(`${ctx.apiBaseUrl}/v1/account/stripe/confirm-checkout`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {}),
-          },
-          body: JSON.stringify({ sessionId, appId: ctx.appId }),
-        });
-        if (!res.ok) {
-          await this.router.navigateByUrl(this.paymentErrorRoute);
-          return;
-        }
-        await bridge.refreshTokens();
+        // Delegates to the lib facade → auth-core confirmStripeCheckout() (TBP-369):
+        // verifies the session with bridge-api and refreshes tokens so the new JWT
+        // reads shouldSelectPlan:false. Throws on failure → caught below → /payment-error.
+        await this.authService.confirmStripeCheckout(sessionId);
         await this.authService.loadSubscription().catch(() => {});
         await this.router.navigateByUrl(stripeRedirectTo);
         return;
@@ -93,7 +67,7 @@ export class OAuthCallbackComponent implements OnInit {
     } catch (err) {
       console.error('[OAuthCallback] callback error:', err);
       if (stripeSuccess) {
-        await this.router.navigateByUrl(this.paymentErrorRoute);
+        await this.router.navigate(['/payment-error']);
         return;
       }
       await this.router.navigate(['/']);

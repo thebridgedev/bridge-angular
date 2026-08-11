@@ -21,6 +21,10 @@ export class UsagePanelComponent {}
 | `label` | `string` | snapshot label, else the metric key | Humanized display label |
 | `className` | `string` | `''` | Class applied to the root element |
 | `onActionClick` | `(snap) => void` | (none) | Override the default Upgrade CTA handler |
+| `actionHref` | `string` | — | Upgrade CTA destination for this instance. Overrides `billing.manageRoute` config; `onActionClick` takes precedence over both |
+
+Like `<bridge-billing-notice>`, the default Upgrade CTA navigates to
+`billing.manageRoute` (falling back to `/billing`).
 
 ## Reading quota state yourself
 

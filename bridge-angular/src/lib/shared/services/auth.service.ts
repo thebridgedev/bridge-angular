@@ -266,6 +266,18 @@ export class AuthService {
     }
   }
 
+  /**
+   * Confirm a returning Stripe Checkout session with bridge-api (which verifies it
+   * with Stripe server-side) and refresh tokens so the new JWT reads
+   * shouldSelectPlan:false. Delegates to auth-core's shared confirmStripeCheckout()
+   * (TBP-369) so the plugin's confirm logic lives in one place. Throws on a non-OK
+   * response or network error — the caller (OAuth callback component) owns the
+   * redirect / error UX.
+   */
+  async confirmStripeCheckout(sessionId: string): Promise<void> {
+    await this.getBridgeAuth().confirmStripeCheckout(sessionId);
+  }
+
   getToken(): TokenSet | null {
     return this._instance?.getTokens() ?? null;
   }

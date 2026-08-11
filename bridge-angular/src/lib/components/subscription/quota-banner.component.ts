@@ -23,6 +23,7 @@ import {
   signal,
 } from '@angular/core';
 import { type QuotaSnapshot } from '@nebulr-group/bridge-auth-core';
+import { BridgeConfigService } from '../../config/bridge-config.service';
 import { AuthService } from '../../shared/services/auth.service';
 import {
   createQuotaSignal,
@@ -68,6 +69,9 @@ export class QuotaBannerComponent implements OnChanges, OnDestroy {
   @Input() className = '';
   /** Override the default Upgrade CTA click handler. */
   @Input() onActionClick?: (snap: QuotaSnapshot) => void;
+  /** CTA destination for this instance. Overrides `billing.manageRoute`
+   *  config; `onActionClick` takes precedence over both. */
+  @Input() actionHref?: string;
   /** Optional display label override. Defaults to the snapshot's `.label`. */
   @Input() label?: string;
 
@@ -101,7 +105,10 @@ export class QuotaBannerComponent implements OnChanges, OnDestroy {
     getCopy(this.snapshot(), this.isBillingAdmin(), this.displayLabel(), this.warningLevel()),
   );
 
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private configService: BridgeConfigService,
+  ) {}
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['metric']) {
@@ -128,8 +135,16 @@ export class QuotaBannerComponent implements OnChanges, OnDestroy {
       this.onActionClick(snap);
       return;
     }
+    // Destination priority: `actionHref` input → `billing.manageRoute` config
+    // → '/billing'.
     if (typeof window !== 'undefined') {
-      window.location.href = '/billing';
+      let manageRoute: string | undefined;
+      try {
+        manageRoute = this.configService.getConfig().billing?.manageRoute;
+      } catch {
+        // Config not initialized — fall through to the default.
+      }
+      window.location.href = this.actionHref ?? manageRoute ?? '/billing';
     }
   }
 }

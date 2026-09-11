@@ -15,10 +15,22 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import type { MessageKey, MessageOverrides } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../../shared/services/auth.service';
+import { TranslatableComponent } from '../../i18n/translator';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
+
+// TBP-631 — the three step descriptions used to sit inline in the template,
+// outside the wrapper's heading guard, so `[heading]="null"` could not reach
+// them. They live in one wrapper rather than three, so the wrapper cannot know
+// the step — the component computes it and hands over the resolved value.
+const STEP_DESCRIPTION_KEYS: Record<'phone' | 'verify' | 'backup', MessageKey> = {
+  phone: 'mfaSetup.phoneDescription',
+  verify: 'mfaSetup.verifyDescription',
+  backup: 'mfaSetup.backupDescription',
+};
 
 @Component({
   selector: 'bridge-mfa-setup',
@@ -26,7 +38,8 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
   imports: [FormsModule, AuthFormWrapperComponent, AuthAlertComponent, AuthSpinnerComponent],
   template: `
     <bridge-auth-form-wrapper
-      heading="Set up two-factor authentication"
+      [heading]="wrapperHeading"
+      [description]="wrapperDescription"
       [className]="className"
       [style]="style"
     >
@@ -35,16 +48,13 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
       }
 
       @if (step() === 'phone') {
-        <p class="bridge-step-desc">
-          Enter your phone number to receive a verification code via SMS.
-        </p>
         <form (ngSubmit)="handleSendCode()">
           <div class="bridge-form-group">
-            <label for="mfa-phone">Phone number</label>
+            <label for="mfa-phone">{{ t('field.phoneNumber') }}</label>
             <input
               id="mfa-phone"
               type="tel"
-              placeholder="+1 (555) 000-0000"
+              [placeholder]="t('placeholder.phoneNumber')"
               [(ngModel)]="phoneNumber"
               name="phoneNumber"
               [disabled]="loading()"
@@ -58,23 +68,22 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
             @if (loading()) {
               <bridge-auth-spinner [size]="16" />
             } @else {
-              Send code
+              {{ t('mfaSetup.sendCode') }}
             }
           </button>
         </form>
       }
 
       @if (step() === 'verify') {
-        <p class="bridge-step-desc">Enter the 6-digit code sent to your phone.</p>
         <form (ngSubmit)="handleVerifyCode()">
           <div class="bridge-form-group">
-            <label for="mfa-verify-code">Verification code</label>
+            <label for="mfa-verify-code">{{ t('field.verificationCode') }}</label>
             <input
               id="mfa-verify-code"
               type="text"
               inputmode="numeric"
               autocomplete="one-time-code"
-              placeholder="Enter 6-digit code"
+              [placeholder]="t('placeholder.sixDigitCode')"
               maxlength="6"
               [(ngModel)]="code"
               name="code"
@@ -89,48 +98,54 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
             @if (loading()) {
               <bridge-auth-spinner [size]="16" />
             } @else {
-              Verify
+              {{ t('mfaSetup.verify') }}
             }
           </button>
         </form>
         <p class="bridge-mfa-help">
           @if (resendCountdown() > 0) {
-            Didn't get your text message? You can resend in {{ resendCountdown() }}s.
+            {{ t('mfa.resendCountdown', { seconds: resendCountdown() }) }}
           } @else {
-            Didn't get your text message?
+            {{ t('mfa.resendPrompt') }}
             <button type="button" class="bridge-link" (click)="handleResendCode()" [disabled]="loading()">
-              Resend code
+              {{ t('action.resendCode') }}
             </button>
             .
           }
         </p>
         <button type="button" class="bridge-link" (click)="changePhone()">
-          Change phone number
+          {{ t('mfaSetup.changePhone') }}
         </button>
       }
 
       @if (step() === 'backup') {
-        <bridge-auth-alert variant="success">Two-factor authentication enabled!</bridge-auth-alert>
-        <p class="bridge-step-desc">
-          Save this recovery code in a safe place. You can use it to access your account if
-          you lose your phone.
-        </p>
+        <bridge-auth-alert variant="success">{{ t('mfaSetup.successHeading') }}</bridge-auth-alert>
         @if (backupCode()) {
           <div class="bridge-backup-code">
             <code>{{ backupCode() }}</code>
             <button type="button" class="bridge-btn bridge-btn-secondary" (click)="copyBackupCode()">
-              {{ copied() ? 'Copied!' : 'Copy' }}
+              {{ copied() ? t('action.copied') : t('action.copy') }}
             </button>
           </div>
         }
         <button type="button" class="bridge-btn bridge-btn-primary" (click)="handleDone()">
-          Done
+          {{ t('action.done') }}
         </button>
       }
     </bridge-auth-form-wrapper>
   `,
 })
-export class MfaSetupComponent implements OnDestroy {
+export class MfaSetupComponent extends TranslatableComponent implements OnDestroy {
+  /** Heading text. Pass `null`/`''` to render no heading and use your own page title. */
+  @Input() heading?: string | null;
+  /**
+   * Step description. Pass `null`/`''` to render nothing and use your own
+   * subtitle (TBP-631).
+   *
+   * This component has THREE steps, each with its own description, but one
+   * wrapper — so an override replaces whichever description is showing.
+   */
+  @Input() description?: string | null;
   @Input() className = '';
   @Input() style = '';
   @Output() complete = new EventEmitter<void>();
@@ -146,6 +161,16 @@ export class MfaSetupComponent implements OnDestroy {
   protected readonly errorMsg = signal<string | null>(null);
   protected readonly copied = signal(false);
   protected readonly resendCountdown = signal(0);
+
+  protected get wrapperHeading(): string | null {
+    return this.heading !== undefined ? this.heading : this.t('mfaSetup.heading');
+  }
+
+  // `undefined` = not overridden (use the built-in); `null` = host suppressed it.
+  protected get wrapperDescription(): string | null {
+    if (this.description !== undefined) return this.description;
+    return this.t(STEP_DESCRIPTION_KEYS[this.step()]);
+  }
 
   private intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -179,7 +204,7 @@ export class MfaSetupComponent implements OnDestroy {
       this.step.set('verify');
       this.startCountdown();
     } catch (err: any) {
-      this.errorMsg.set(err.message || 'Failed to send verification code.');
+      this.errorMsg.set(err.message || this.t('mfaSetup.error.sendCode'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);
@@ -195,7 +220,7 @@ export class MfaSetupComponent implements OnDestroy {
       this.code = '';
       this.startCountdown();
     } catch (err: any) {
-      this.errorMsg.set(err.message || 'Failed to resend verification code.');
+      this.errorMsg.set(err.message || this.t('mfaSetup.error.resend'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);
@@ -211,7 +236,7 @@ export class MfaSetupComponent implements OnDestroy {
       this.backupCode.set(result.backupCode ?? null);
       this.step.set('backup');
     } catch (err: any) {
-      this.errorMsg.set(err.message || 'Invalid code. Please try again.');
+      this.errorMsg.set(err.message || this.t('mfa.error.invalidCode'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);

@@ -28,6 +28,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import type { AppConfig, FederationConnection } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../../shared/services/auth.service';
+import { TranslatableComponent } from '../../i18n/translator';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
@@ -68,29 +69,33 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
   ],
   template: `
     @if (authState() === 'mfa-required') {
-      <bridge-mfa-challenge (error)="error.emit($event)" />
+      <bridge-mfa-challenge [messages]="messages" (error)="error.emit($event)" />
     } @else if (authState() === 'mfa-setup-required') {
-      <bridge-mfa-setup (error)="error.emit($event)" />
+      <bridge-mfa-setup [messages]="messages" (error)="error.emit($event)" />
     } @else if (authState() === 'tenant-selection') {
       <bridge-tenant-selector (error)="error.emit($event)" />
     } @else if (step() === 'forgot-password') {
-      <bridge-auth-form-wrapper heading="Reset your password" [className]="className" [style]="style">
+      <bridge-auth-form-wrapper
+        [heading]="fpEmailSent() ? null : t('forgot.headingRequest')"
+        [className]="className"
+        [style]="style"
+      >
         @if (errorMsg()) {
           <bridge-auth-alert variant="error">{{ errorMsg() }}</bridge-auth-alert>
         }
         @if (fpEmailSent()) {
-          <bridge-auth-alert variant="success">Check your email for a password reset link.</bridge-auth-alert>
+          <bridge-auth-alert variant="success">{{ t('forgot.emailSent') }}</bridge-auth-alert>
           <div class="bridge-form-footer">
-            <button type="button" class="bridge-link" (click)="goBackToCredentials()">Back to login</button>
+            <button type="button" class="bridge-link" (click)="goBackToCredentials()">{{ t('action.backToLogin') }}</button>
           </div>
         } @else {
           <form (ngSubmit)="handleForgotSubmit()">
             <div class="bridge-form-group">
-              <label for="forgot-email">Email</label>
+              <label for="forgot-email">{{ t('field.email') }}</label>
               <input
                 id="forgot-email"
                 type="email"
-                placeholder="you@example.com"
+                [placeholder]="t('placeholder.email')"
                 required
                 [(ngModel)]="email"
                 name="email"
@@ -105,28 +110,28 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
               @if (fpLoading()) {
                 <bridge-auth-spinner [size]="16" />
               } @else {
-                Send reset link
+                {{ t('forgot.submit') }}
               }
             </button>
           </form>
           <div class="bridge-form-footer">
-            <button type="button" class="bridge-link" (click)="goBackToCredentials()">Back to login</button>
+            <button type="button" class="bridge-link" (click)="goBackToCredentials()">{{ t('action.backToLogin') }}</button>
           </div>
         }
       </bridge-auth-form-wrapper>
     } @else {
-      <bridge-auth-form-wrapper [heading]="heading" [className]="className" [style]="style">
+      <bridge-auth-form-wrapper [heading]="heading ?? ''" [className]="className" [style]="style">
         @if (errorMsg()) {
           <bridge-auth-alert variant="error">{{ errorMsg() }}</bridge-auth-alert>
         }
 
         <form (ngSubmit)="handleSubmit()">
           <div class="bridge-form-group">
-            <label for="login-email">Email</label>
+            <label for="login-email">{{ t('field.email') }}</label>
             <input
               id="login-email"
               type="email"
-              placeholder="you@example.com"
+              [placeholder]="t('placeholder.email')"
               required
               [(ngModel)]="email"
               name="email"
@@ -135,12 +140,12 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
           </div>
 
           <div class="bridge-form-group">
-            <label for="login-password">Password</label>
+            <label for="login-password">{{ t('field.password') }}</label>
             <div class="bridge-password-wrapper">
               <input
                 id="login-password"
                 [type]="showPassword() ? 'text' : 'password'"
-                placeholder="Enter your password"
+                [placeholder]="t('placeholder.password')"
                 required
                 [(ngModel)]="password"
                 name="password"
@@ -151,7 +156,7 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
                 class="bridge-password-toggle"
                 (click)="togglePassword()"
                 tabindex="-1"
-                [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
+                [attr.aria-label]="showPassword() ? t('action.hidePassword') : t('action.showPassword')"
               >
                 {{ showPassword() ? '🙈' : '👁' }}
               </button>
@@ -164,27 +169,28 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
             [disabled]="loading() || !email.trim() || !password"
           >
             @if (loading()) {
-              <bridge-auth-spinner [size]="16" /> Signing in…
+              <bridge-auth-spinner [size]="16" /> {{ t('login.submitting') }}
             } @else {
-              Sign in
+              {{ t('login.submit') }}
             }
           </button>
 
           @if (effectiveShowForgotPassword()) {
             <div class="bridge-forgot-row">
-              <button type="button" class="bridge-link" (click)="openForgot()">Forgot password?</button>
+              <button type="button" class="bridge-link" (click)="openForgot()">{{ t('login.forgotPassword') }}</button>
             </div>
           }
         </form>
 
         @if (effectiveShowPasskeys() || effectiveShowMagicLink() || effectiveSso().length > 0) {
-          <div class="bridge-divider">or</div>
+          <div class="bridge-divider">{{ t('divider.or') }}</div>
         }
 
         @if (effectiveShowPasskeys()) {
           <div class="bridge-sso-row">
             <bridge-passkey-login
               [setupHref]="passkeySetupHref"
+              [messages]="messages"
               className="bridge-btn bridge-btn-secondary bridge-sso-btn"
               (login)="login.emit()"
               (error)="error.emit($event)"
@@ -199,7 +205,7 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
               class="bridge-btn bridge-btn-secondary bridge-sso-btn"
               data-bridge-magic-link
             >
-              <span class="bridge-sso-btn-inner">Sign in with Magic Link</span>
+              <span class="bridge-sso-btn-inner">{{ t('login.magicLink') }}</span>
             </a>
           </div>
         }
@@ -231,14 +237,14 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
 
         @if (effectiveShowSignupLink()) {
           <div class="bridge-form-footer">
-            Don't have an account? <a [href]="signupHref">Sign up</a>
+            {{ t('login.signupPrompt') }} <a [href]="signupHref">{{ t('login.signupLink') }}</a>
           </div>
         }
       </bridge-auth-form-wrapper>
     }
   `,
 })
-export class LoginFormComponent implements OnInit {
+export class LoginFormComponent extends TranslatableComponent implements OnInit {
   @Input() showSignupLink?: boolean;
   @Input() signupHref = '/auth/signup';
   @Input() showForgotPassword?: boolean;
@@ -247,7 +253,8 @@ export class LoginFormComponent implements OnInit {
   @Input() magicLinkHref = '/auth/magic-link';
   @Input() showPasskeys?: boolean;
   @Input() passkeySetupHref = '/auth/setup-passkey';
-  @Input() heading = '';
+  /** Heading text. Defaults to empty — most hosts write their own page title. */
+  @Input() heading: string | null = '';
   @Input() ssoConnections: FederationConnection[] = [];
   @Input() ssoMode: 'redirect' | 'popup' = 'redirect';
   @Input() className = '';
@@ -287,6 +294,7 @@ export class LoginFormComponent implements OnInit {
   );
 
   constructor() {
+    super();
     // react `useEffect([authState])` → fire onLogin once authenticated.
     let wasAuthenticated = false;
     effect(() => {
@@ -322,7 +330,7 @@ export class LoginFormComponent implements OnInit {
     (this.authService.getBridgeAuth() as any)
       .authenticateWithMagicLinkToken(magicToken)
       .catch((err: any) => {
-        this.errorMsg.set(err.message || 'Magic link authentication failed.');
+        this.errorMsg.set(err.message || this.t('magicLink.error.auth'));
         this.error.emit(err);
       })
       .finally(() => this.loading.set(false));
@@ -335,7 +343,7 @@ export class LoginFormComponent implements OnInit {
     try {
       await this.authService.getBridgeAuth().authenticate(this.email, this.password);
     } catch (err: any) {
-      this.errorMsg.set(err.message || 'Invalid email or password.');
+      this.errorMsg.set(err.message || this.t('login.error.invalidCredentials'));
       this.error.emit(err);
       this.loading.set(false);
     }
@@ -360,7 +368,7 @@ export class LoginFormComponent implements OnInit {
       await this.authService.getBridgeAuth().sendResetPasswordLink(this.email);
       this.fpEmailSent.set(true);
     } catch (err: any) {
-      this.errorMsg.set(err.message || 'Failed to send reset link.');
+      this.errorMsg.set(err.message || this.t('forgot.error.send'));
       this.error.emit(err);
     } finally {
       this.fpLoading.set(false);

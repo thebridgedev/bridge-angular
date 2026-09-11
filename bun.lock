@@ -16,9 +16,8 @@
     },
     "bridge-angular": {
       "name": "@nebulr-group/bridge-angular",
-      "version": "0.4.0-beta.4",
+      "version": "0.6.0",
       "dependencies": {
-        "@nebulr-group/bridge-auth-core": "0.4.0-beta.5",
         "tslib": "^2.3.0",
       },
       "devDependencies": {
@@ -29,6 +28,7 @@
         "@angular/forms": "^19.0.0",
         "@angular/platform-browser": "^19.0.0",
         "@angular/router": "^19.0.0",
+        "@nebulr-group/bridge-auth-core": "^0.5.1",
         "ng-packagr": "^19.0.0",
         "typescript": "~5.6.0",
         "zone.js": "~0.15.0",
@@ -39,6 +39,7 @@
         "@angular/forms": "^19.0.0",
         "@angular/platform-browser": "^19.0.0",
         "@angular/router": "^19.0.0",
+        "@nebulr-group/bridge-auth-core": ">=0.5.1 <1.0.0",
       },
     },
     "demo": {
@@ -517,7 +518,7 @@
 
     "@nebulr-group/bridge-angular": ["@nebulr-group/bridge-angular@workspace:bridge-angular"],
 
-    "@nebulr-group/bridge-auth-core": ["@nebulr-group/bridge-auth-core@0.4.0-beta.5", "", { "dependencies": { "jose": "^5.2.0" } }, "sha512-ESKnqCz6P5LQcorNEZ9dbWA3Ukr2IedKrifmhgpB3BGFfiOr5Th8coc7T3T/v0wk3hXh4AtTV7C6AA2qqOL+XA=="],
+    "@nebulr-group/bridge-auth-core": ["@nebulr-group/bridge-auth-core@0.5.1", "", { "dependencies": { "jose": "^6.2.3" } }, "sha512-8r7owWgbxf6iUjiAMPur7z1TA7NyrgE2z+RjssM53OUKR55DIbcWupBUJB2HNWhb+6+0IbpRq6YE0d4QdbbaMg=="],
 
     "@ngtools/webpack": ["@ngtools/webpack@19.2.20", "", { "peerDependencies": { "@angular/compiler-cli": "^19.0.0 || ^19.2.0-next.0", "typescript": ">=5.5 <5.9", "webpack": "^5.54.0" } }, "sha512-nuCjcxLmFrn0s53G67V5R19mUpYjewZBLz6Wrg7BtJkjq08xfO0QgaJg3e6wzEmj1AclH7eMKRnuQhm5otyutg=="],
 
@@ -1263,7 +1264,7 @@
 
     "jiti": ["jiti@1.21.7", "", { "bin": "bin/jiti.js" }, "sha512-/imKNG4EbWNrVjoNC/1H5/9GFy+tqjGBHCaSsN+P2RnPqjsLmv6UD3Ej+Kj8nBWaRAwyk7kK5ZUc+OEatnTR3A=="],
 
-    "jose": ["jose@5.10.0", "", {}, "sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg=="],
+    "jose": ["jose@6.2.12", "", {}, "sha512-9NiFmJEex0sy2Dk58j2UGBSHgUs2ypF9eZSu4L6vjOX3Dp96Sw1F3uL+H+D1sx02jZZdzUT0HgvCy59CuvXcWw=="],
 
     "js-tokens": ["js-tokens@4.0.0", "", {}, "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ=="],
 
@@ -2297,6 +2298,8 @@
 
     "cross-spawn/which/isexe": ["isexe@2.0.0", "", {}, "sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw=="],
 
+    "demo/@nebulr-group/bridge-angular/@nebulr-group/bridge-auth-core": ["@nebulr-group/bridge-auth-core@0.4.0-beta.5", "", { "dependencies": { "jose": "^5.2.0" } }, "sha512-ESKnqCz6P5LQcorNEZ9dbWA3Ukr2IedKrifmhgpB3BGFfiOr5Th8coc7T3T/v0wk3hXh4AtTV7C6AA2qqOL+XA=="],
+
     "express/debug/ms": ["ms@2.0.0", "", {}, "sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A=="],
 
     "finalhandler/debug/ms": ["ms@2.0.0", "", {}, "sha512-Tpp60P6IUJDTuOq/5Z8cdskzJujfwqfOTkrwIwj7IRISpnkJnT6SyJ4PCPnGMoFjC9ddhal5KVIYtAt97ix05A=="],
@@ -2490,6 +2493,8 @@
     "babel-loader/find-cache-dir/pkg-dir/find-up": ["find-up@6.3.0", "", { "dependencies": { "locate-path": "^7.1.0", "path-exists": "^5.0.0" } }, "sha512-v2ZsoEuVHYy8ZIlYqwPe/39Cy+cFDzp4dXPaxNvkEuouymu+2Jbz0PxpKarJHYJTmv2HWT3O382qY8l4jMWthw=="],
 
     "cli-truncate/string-width/strip-ansi/ansi-regex": ["ansi-regex@6.2.2", "", {}, "sha512-Bq3SmSpyFHaWjPk8If9yc6svM8c56dB5BAtW4Qbw5jHTwwXXcTLoRMkpDJp6VL0XzlWaCHTXrkFURMYmD0sLqg=="],
+
+    "demo/@nebulr-group/bridge-angular/@nebulr-group/bridge-auth-core/jose": ["jose@5.10.0", "", {}, "sha512-s+3Al/p9g32Iq+oqXxkW//7jk2Vig6FF1CFqzVXoTUXt2qz89YWbL+OwS17NFYEvxC35n0FKeGO2LGYSxeM2Gg=="],
 
     "log-update/cli-cursor/restore-cursor/onetime": ["onetime@7.0.0", "", { "dependencies": { "mimic-function": "^5.0.0" } }, "sha512-VXJjc87FScF88uafS3JllDgvAm+c/Slfz06lorj2uAY34rlUu0Nt+v8wreiImcrgAjjIHp1rXpTDlLOGw29WwQ=="],
 

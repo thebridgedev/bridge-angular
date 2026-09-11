@@ -1,3 +1,5 @@
+import type { MessageOverrides, ReturnToConfig } from '@nebulr-group/bridge-auth-core';
+
 export interface BridgeConfig {
   /**
    * Your Bridge application ID
@@ -53,6 +55,34 @@ export interface BridgeConfig {
    * @default false
    */
   debug?: boolean;
+
+  /**
+   * UI language for the SDK auth components, e.g. 'sv' or 'sv-SE' (TBP-630).
+   * Region variants resolve to their primary subtag; an unknown locale falls
+   * back to English rather than throwing.
+   * @default 'en'
+   */
+  locale?: string;
+
+  /**
+   * Per-key copy overrides applied on top of the resolved locale, for wording
+   * an app genuinely needs to differ. Highest precedence in the chain, and
+   * layered under each component's own `messages` input.
+   */
+  messages?: MessageOverrides;
+
+  /**
+   * Deep-link preservation for `bridgeAuthGuard()` (TBP-629).
+   *
+   * When the guard turns an unauthenticated visitor away, the page they asked
+   * for is remembered and restored after login. On by default — set
+   * `{ enabled: false }` to send every login to the same place.
+   *
+   * `loginRoute` is filled in from the top-level `loginRoute` above, so the
+   * login route never becomes its own return target without you repeating
+   * yourself.
+   */
+  returnTo?: ReturnToConfig;
 
   /**
    * Billing paywall configuration. When set, Bridge redirects an authenticated

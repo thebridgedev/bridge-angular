@@ -8,6 +8,7 @@
  */
 import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
 import { AuthService } from '../../shared/services/auth.service';
+import { TranslatableComponent } from '../../i18n/translator';
 import { AuthSpinnerComponent } from './shared/spinner.component';
 
 @Component({
@@ -27,13 +28,14 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
       @if (loading()) {
         <bridge-auth-spinner [size]="16" />
       }
-      <span>{{ label }}</span>
+      <span>{{ label ?? t('passkey.loginButton') }}</span>
     </button>
   `,
 })
-export class PasskeyLoginComponent {
+export class PasskeyLoginComponent extends TranslatableComponent {
   @Input() setupHref?: string;
-  @Input() label = 'Continue with passkey';
+  /** Button label. Defaults to the catalogue's `passkey.loginButton`. */
+  @Input() label?: string;
   @Input() className = '';
   @Input() style = '';
   @Output() login = new EventEmitter<void>();
@@ -57,10 +59,10 @@ export class PasskeyLoginComponent {
           window.location.href = this.setupHref;
         }
       } else if (result?.type === 'auth_error') {
-        throw new Error(result.error || 'Passkey login failed');
+        throw new Error(result.error || this.t('passkey.error.auth'));
       }
     } catch (err: any) {
-      this.error.emit(new Error(err.message || 'Passkey login failed'));
+      this.error.emit(new Error(err.message || this.t('passkey.error.auth')));
     } finally {
       this.loading.set(false);
     }

@@ -101,7 +101,7 @@ Three options point the SDK at Bridge itself. You only change them if you're on 
 
 Unauthenticated users who hit a protected route are redirected to Bridge's hosted login page. Hosted login is what you get out of the box.
 
-> **Framework note:** `BridgeConfig` declares a `loginRoute` option, but `bridgeAuthGuard()` does not yet use it: unlike the Svelte and React SDKs, there is no in-app login redirect mode. To run your own login page (for example, one built with [`bridge-login-form`](/auth/ui/email-password/)), register it as a public route and link to it yourself.
+Set `loginRoute` and `bridgeAuthGuard()` sends unauthenticated users to that in-app route instead — SDK mode. Build the page with [`bridge-login-form`](/auth/ui/email-password/) and register the route itself as public. Either way the page they were heading for is remembered and restored after login; see [Route guards](/auth/securing/route-guards/#returning-to-the-page-they-asked-for).
 
 ## All config options
 
@@ -113,10 +113,50 @@ Unauthenticated users who hit a protected route are redirected to Bridge's hoste
 | `cloudViewsUrl` | `string` | `'https://api.thebridge.dev/cloud-views'` | Base URL for Bridge's cloud-views service (plan selection, payments). See [Base URLs](#base-urls) |
 | `callbackUrl` | `string` | `${origin}/auth/oauth-callback` | Where the login flow redirects back to after a successful login. See [Callback URL](#callback-url) |
 | `defaultRedirectRoute` | `string` | `'/'` | Route to redirect to after login |
-| `loginRoute` | `string` | `'/login'` | Declared but not used by the route guard yet. See [Login route](#login-route) |
+| `loginRoute` | `string` | (unset) | In-app route of your login page. Set it for SDK mode; leave unset for hosted login. See [Login route](#login-route) |
 | `billing.paywallRoute` | `string` | (none) | Route to redirect to when the workspace (called a *tenant* in the API) has no plan selected |
 | `billing.paymentErrorRoute` | `string` | `'/payment-error'` | Route to redirect to when a Stripe checkout confirmation fails |
+| `locale` | `string` | `'en'` | UI language for the SDK auth components, e.g. `'sv'`. Region variants (`'sv-SE'`) resolve to their base language; an unknown locale falls back to English |
+| `messages` | `MessageOverrides` | (none) | Per-key copy overrides applied on top of the locale. See [Translating the auth UI](#translating-the-auth-ui) |
+| `returnTo.enabled` | `boolean` | `true` | Set `false` to send every login to `defaultRedirectRoute` regardless of where the visitor was heading |
+| `returnTo.param` | `string` | `'redirectUri'` | Query parameter carrying the return target in SDK mode |
+| `returnTo.exclude` | `(string \| RegExp)[]` | `[]` | Paths that must never become a return target. Your `loginRoute` is excluded automatically |
 | `debug` | `boolean` | `false` | Enable debug logging |
+
+## Translating the auth UI
+
+The SDK auth components ship their own copy — field labels, buttons, alerts,
+success messages. Set `locale` once in `provideBridge()` and all of it renders
+in that language:
+
+```ts
+provideBridge({ appId: '…', locale: 'sv' }, routeConfig)
+```
+
+Bridge owns the **mechanics**: what a field is, what a button does, what went
+wrong. Your app owns **voice and context**: the page title, the subtitle,
+anything naming your product. Bridge cannot know those, which is why every
+component takes `[heading]="null"` and `[description]="null"` so you can write
+your own.
+
+Shipping locales: **`en`** and **`sv`**. An unknown locale falls back to English
+rather than throwing, and a key missing from a locale falls back to English —
+a raw key like `login.submit` never renders.
+
+For a phrase you need worded differently, override it per key:
+
+```ts
+// app-wide
+provideBridge({ appId: '…', locale: 'sv', messages: { 'login.submit': 'Logga in nu' } }, routeConfig)
+```
+
+```html
+<!-- or one screen only -->
+<bridge-login-form [messages]="{ 'login.heading': 'Welcome back' }" />
+```
+
+Precedence is component input → config `messages` → `locale` → English. The
+override path also covers any language Bridge does not ship yet.
 
 There is no `storage` adapter option: the auth-core `BridgeAuth` singleton owns token storage (`localStorage`) internally.
 

@@ -9,6 +9,7 @@
 import { Component, EventEmitter, Input, Output, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../shared/services/auth.service';
+import { TranslatableComponent } from '../../i18n/translator';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
@@ -19,7 +20,8 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
   imports: [FormsModule, AuthFormWrapperComponent, AuthAlertComponent, AuthSpinnerComponent],
   template: `
     <bridge-auth-form-wrapper
-      [heading]="isSetMode() ? 'Set new password' : 'Reset your password'"
+      [heading]="wrapperHeading"
+      [description]="wrapperDescription"
       [className]="className"
       [style]="style"
     >
@@ -29,19 +31,19 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
 
       @if (isSetMode()) {
         @if (passwordReset()) {
-          <h2 class="bridge-success-heading">Password set</h2>
+          <h2 class="bridge-success-heading">{{ t('forgot.successHeading') }}</h2>
           <div class="bridge-form-footer">
-            <a [href]="loginHref">Back to login</a>
+            <a [href]="loginHref">{{ t('action.backToLogin') }}</a>
           </div>
         } @else {
           <form (ngSubmit)="handleSetPassword()">
             <div class="bridge-form-group">
-              <label for="newPassword">New password</label>
+              <label for="newPassword">{{ t('field.newPassword') }}</label>
               <div class="bridge-password-wrapper">
                 <input
                   id="newPassword"
                   [type]="showPasswords() ? 'text' : 'password'"
-                  placeholder="At least 8 characters"
+                  [placeholder]="t('placeholder.newPassword')"
                   required
                   [(ngModel)]="password"
                   name="newPassword"
@@ -52,17 +54,18 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
                   class="bridge-password-toggle"
                   (click)="togglePasswords()"
                   tabindex="-1"
+                  [attr.aria-label]="showPasswords() ? t('action.hidePasswords') : t('action.showPasswords')"
                 >
                   {{ showPasswords() ? '🙈' : '👁' }}
                 </button>
               </div>
             </div>
             <div class="bridge-form-group">
-              <label for="confirmPassword">Confirm password</label>
+              <label for="confirmPassword">{{ t('field.confirmPassword') }}</label>
               <input
                 id="confirmPassword"
                 [type]="showPasswords() ? 'text' : 'password'"
-                placeholder="Repeat password"
+                [placeholder]="t('placeholder.confirmPassword')"
                 required
                 [(ngModel)]="confirmPassword"
                 name="confirmPassword"
@@ -77,27 +80,24 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
               @if (loading()) {
                 <bridge-auth-spinner [size]="16" />
               } @else {
-                Set a password
+                {{ t('forgot.setSubmit') }}
               }
             </button>
           </form>
         }
       } @else if (emailSent()) {
-        <bridge-auth-alert variant="success">Check your email for a password reset link.</bridge-auth-alert>
+        <bridge-auth-alert variant="success">{{ t('forgot.emailSent') }}</bridge-auth-alert>
         <div class="bridge-form-footer">
-          <a [href]="loginHref">Back to login</a>
+          <a [href]="loginHref">{{ t('action.backToLogin') }}</a>
         </div>
       } @else {
-        <p class="bridge-step-desc">
-          Enter your email and we'll send you a link to reset your password.
-        </p>
         <form (ngSubmit)="handleSendLink()">
           <div class="bridge-form-group">
-            <label for="reset-email">Email</label>
+            <label for="reset-email">{{ t('field.email') }}</label>
             <input
               id="reset-email"
               type="email"
-              placeholder="you@example.com"
+              [placeholder]="t('placeholder.email')"
               required
               [(ngModel)]="email"
               name="email"
@@ -112,23 +112,27 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
             @if (loading()) {
               <bridge-auth-spinner [size]="16" />
             } @else {
-              Send reset link
+              {{ t('forgot.submit') }}
             }
           </button>
         </form>
         <div class="bridge-form-footer">
-          <a [href]="loginHref">Back to login</a>
+          <a [href]="loginHref">{{ t('action.backToLogin') }}</a>
         </div>
       }
     </bridge-auth-form-wrapper>
   `,
 })
-export class ForgotPasswordComponent {
+export class ForgotPasswordComponent extends TranslatableComponent {
   /** When provided, switches to "set new password" mode. */
   @Input() token?: string;
   @Input() loginHref = '/auth/login';
   @Input() className = '';
   @Input() style = '';
+  /** Heading text. Pass `null`/`''` to render no heading and use your own page title. */
+  @Input() heading?: string | null;
+  /** Step description. Pass `null`/`''` to render nothing and use your own subtitle (TBP-631). */
+  @Input() description?: string | null;
   @Output() complete = new EventEmitter<void>();
   @Output() error = new EventEmitter<Error>();
 
@@ -145,6 +149,23 @@ export class ForgotPasswordComponent {
   protected readonly passwordReset = signal(false);
   protected readonly showPasswords = signal(false);
 
+  // `undefined` means "not passed" and falls through to the catalogue; `null` is
+  // an explicit suppression from the host and must survive (TBP-631), which is
+  // why these cannot collapse to `heading ?? t(...)`.
+  protected get wrapperHeading(): string | null {
+    if (this.passwordReset() || this.emailSent()) return null;
+    if (this.heading !== undefined) return this.heading;
+    return this.isSetMode() ? this.t('forgot.headingSet') : this.t('forgot.headingRequest');
+  }
+
+  // TBP-631 — same shape as the heading: the description belongs to the
+  // send-link step only.
+  protected get wrapperDescription(): string | null {
+    if (this.isSetMode() || this.passwordReset() || this.emailSent()) return null;
+    if (this.description !== undefined) return this.description;
+    return this.t('forgot.description');
+  }
+
   togglePasswords(): void {
     this.showPasswords.update((v) => !v);
   }
@@ -157,7 +178,7 @@ export class ForgotPasswordComponent {
       await this.authService.getBridgeAuth().sendResetPasswordLink(this.email);
       this.emailSent.set(true);
     } catch (err: any) {
-      this.errorMsg.set(err.message || 'Failed to send reset link.');
+      this.errorMsg.set(err.message || this.t('forgot.error.send'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);
@@ -169,11 +190,11 @@ export class ForgotPasswordComponent {
     this.errorMsg.set(null);
 
     if (this.password !== this.confirmPassword) {
-      this.errorMsg.set('Passwords do not match.');
+      this.errorMsg.set(this.t('forgot.error.mismatch'));
       return;
     }
     if (this.password.length < 8) {
-      this.errorMsg.set('Password must be at least 8 characters.');
+      this.errorMsg.set(this.t('forgot.error.tooShort'));
       return;
     }
 
@@ -183,7 +204,7 @@ export class ForgotPasswordComponent {
       this.passwordReset.set(true);
       this.complete.emit();
     } catch (err: any) {
-      this.errorMsg.set(err.message || 'Failed to update password.');
+      this.errorMsg.set(err.message || this.t('forgot.error.update'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);

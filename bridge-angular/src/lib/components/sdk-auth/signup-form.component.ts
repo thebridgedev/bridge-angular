@@ -11,6 +11,7 @@
 import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../shared/services/auth.service';
+import { TranslatableComponent } from '../../i18n/translator';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
@@ -20,16 +21,29 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
   standalone: true,
   imports: [FormsModule, AuthFormWrapperComponent, AuthAlertComponent, AuthSpinnerComponent],
   template: `
-    <bridge-auth-form-wrapper [heading]="heading" [className]="className" [style]="style">
+    <!-- In the success state the "Check your email" heading below is the title,
+         so suppress the form heading to avoid two stacked headings. -->
+    <bridge-auth-form-wrapper
+      [heading]="success() ? null : wrapperHeading"
+      [className]="className"
+      [style]="style"
+    >
       @if (success()) {
-        <h2 class="bridge-success-heading">Check your email</h2>
-        <p class="bridge-step-desc">
-          We sent a verification link to <strong>{{ email }}</strong>. Check your inbox to
-          activate your account.
-        </p>
+        <h2 class="bridge-success-heading">{{ t('signup.successHeading') }}</h2>
+        <!-- NOT lifted into the wrapper, unlike the other components: it belongs
+             under the heading above, which is rendered inside the wrapper's
+             children rather than as the wrapper heading. Hoisting it would print
+             the description above the heading it belongs to (TBP-631). -->
+        @if (description === undefined) {
+          <p class="bridge-step-desc">
+            {{ successDescriptionParts[0] }}<strong>{{ email }}</strong>{{ successDescriptionParts[1] ?? '' }}
+          </p>
+        } @else if (description) {
+          <p class="bridge-step-desc">{{ description }}</p>
+        }
         @if (showLoginLink) {
           <div class="bridge-form-footer">
-            Already have an account? <a [href]="loginHref">Log in</a>
+            {{ t('signup.loginPrompt') }} <a [href]="loginHref">{{ t('signup.loginLink') }}</a>
           </div>
         }
       } @else {
@@ -39,11 +53,11 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
 
         <form (ngSubmit)="handleSubmit()">
           <div class="bridge-form-group">
-            <label for="signup-email">Email</label>
+            <label for="signup-email">{{ t('field.email') }}</label>
             <input
               id="signup-email"
               type="email"
-              placeholder="you@example.com"
+              [placeholder]="t('placeholder.email')"
               required
               [(ngModel)]="email"
               name="email"
@@ -51,22 +65,22 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
             />
           </div>
           <div class="bridge-form-group">
-            <label for="signup-first-name">First name</label>
+            <label for="signup-first-name">{{ t('field.firstName') }}</label>
             <input
               id="signup-first-name"
               type="text"
-              placeholder="First name"
+              [placeholder]="t('placeholder.firstName')"
               [(ngModel)]="firstName"
               name="firstName"
               [disabled]="loading()"
             />
           </div>
           <div class="bridge-form-group">
-            <label for="signup-last-name">Last name</label>
+            <label for="signup-last-name">{{ t('field.lastName') }}</label>
             <input
               id="signup-last-name"
               type="text"
-              placeholder="Last name"
+              [placeholder]="t('placeholder.lastName')"
               [(ngModel)]="lastName"
               name="lastName"
               [disabled]="loading()"
@@ -80,24 +94,27 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
             @if (loading()) {
               <bridge-auth-spinner [size]="16" />
             } @else {
-              Sign up
+              {{ t('signup.submit') }}
             }
           </button>
         </form>
 
         @if (showLoginLink) {
           <div class="bridge-form-footer">
-            Already have an account? <a [href]="loginHref">Log in</a>
+            {{ t('signup.loginPrompt') }} <a [href]="loginHref">{{ t('signup.loginLink') }}</a>
           </div>
         }
       }
     </bridge-auth-form-wrapper>
   `,
 })
-export class SignupFormComponent {
+export class SignupFormComponent extends TranslatableComponent {
   @Input() showLoginLink = true;
   @Input() loginHref = '/auth/login';
-  @Input() heading = 'Create your account';
+  /** Heading text. Pass `null`/`''` to render no heading and use your own page title. */
+  @Input() heading?: string | null;
+  /** Success-state description. Pass `null`/`''` to render nothing (TBP-631). */
+  @Input() description?: string | null;
   @Input() className = '';
   @Input() style = '';
   @Output() signup = new EventEmitter<void>();
@@ -112,6 +129,19 @@ export class SignupFormComponent {
   protected readonly errorMsg = signal<string | null>(null);
   protected readonly success = signal(false);
 
+  protected get wrapperHeading(): string | null {
+    return this.heading !== undefined ? this.heading : this.t('signup.heading');
+  }
+
+  /**
+   * The catalogue holds the whole sentence with an `{email}` placeholder so a
+   * locale can put the address wherever it belongs; the split runs on the
+   * already-translated string purely to wrap it in `<strong>`.
+   */
+  protected get successDescriptionParts(): string[] {
+    return this.t('signup.successDescription').split('{email}');
+  }
+
   async handleSubmit(): Promise<void> {
     if (this.loading()) return;
     this.errorMsg.set(null);
@@ -121,7 +151,7 @@ export class SignupFormComponent {
       this.success.set(true);
       this.signup.emit();
     } catch (err: any) {
-      this.errorMsg.set(err.message || 'Failed to create account.');
+      this.errorMsg.set(err.message || this.t('signup.error.create'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);

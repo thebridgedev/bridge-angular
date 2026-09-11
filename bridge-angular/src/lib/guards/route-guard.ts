@@ -1,6 +1,12 @@
 import { inject } from '@angular/core';
 import type { CanActivateFn } from '@angular/router';
 import { Router } from '@angular/router';
+import {
+  sanitizeReturnTo,
+  stashReturnTo,
+  withReturnTo,
+  type ReturnToConfig,
+} from '@nebulr-group/bridge-auth-core';
 import { BridgeConfigService } from '../config/bridge-config.service';
 import { BridgeService } from '../core/bridge.service';
 import { AuthService } from '../shared/services/auth.service';
@@ -18,6 +24,11 @@ export type RouteRule = {
 export interface RouteGuardConfig {
   rules: RouteRule[];
   defaultAccess?: 'public' | 'protected';
+  /**
+   * Deep-link preservation (TBP-629). Also settable on `BridgeConfig`; a value
+   * here wins, so an app can keep all its routing config in one object.
+   */
+  returnTo?: ReturnToConfig;
 }
 
 // --- Pure helper functions (same logic as bridge-svelte route-guard.ts) ---
@@ -90,8 +101,44 @@ function isPublicRoute(pathname: string, config: RouteGuardConfig): boolean {
 
 export type NavigationDecision =
   | { type: 'allow' }
-  | { type: 'login'; loginUrl: string }
-  | { type: 'redirect'; to: string };
+  | { type: 'login'; loginUrl: string; returnTo?: string }
+  | { type: 'redirect'; to: string; returnTo?: string };
+
+/**
+ * Reduce the attempted URL to something safe to return to after login, or null.
+ *
+ * TBP-629. Null covers every "just use the default route" case: opted out,
+ * excluded, the login route itself, a public route, or an unsafe value.
+ * `sanitizeReturnTo` is auth-core's — the open-redirect validation must not be
+ * reimplemented per framework, because a second implementation is a second
+ * thing to get wrong and the way this gets got wrong is an open redirect.
+ */
+function resolveReturnTo(
+  attempted: string | null | undefined,
+  config: RouteGuardConfig,
+  returnToConfig: ReturnToConfig | undefined,
+): string | null {
+  if (returnToConfig?.enabled === false) return null;
+
+  const safe = sanitizeReturnTo(attempted);
+  if (!safe) return null;
+
+  // Compare paths only — a query string must not let `/auth/login?x=1` slip past
+  // an exclusion written as `/auth/login`.
+  const path = safe.split('?')[0];
+
+  const loginRoute = returnToConfig?.loginRoute;
+  if (loginRoute && path === loginRoute.split('?')[0]) return null;
+
+  const excluded = returnToConfig?.exclude ?? [];
+  if (excluded.some((pattern) => toRegExp(pattern).test(path))) return null;
+
+  // A public route is never what the guard turned somebody away from, and
+  // sending them "back" to one after login is noise.
+  if (isPublicRoute(path, config)) return null;
+
+  return safe;
+}
 
 async function getNavigationDecision(
   pathname: string,
@@ -101,6 +148,8 @@ async function getNavigationDecision(
   paywallRoute?: string,
   isAuthCallbackInFlight = false,
   loginRoute?: string,
+  attempted?: string,
+  returnToConfig?: ReturnToConfig,
 ): Promise<NavigationDecision> {
   const authenticated = authService.isAuthenticated();
   const isPublic = isPublicRoute(pathname, config);
@@ -116,14 +165,37 @@ async function getNavigationDecision(
   //   - SDK mode: consumer set `loginRoute` → redirect to that in-app login view
   //   - Hosted mode (default): no `loginRoute` → redirect to the hosted auth portal
   if (!isPublic && !authenticated) {
+    // TBP-629 — carry the page they actually asked for through the login, so a
+    // deep link does not collapse to the app's default route. Null when there is
+    // nothing safe or worth carrying, and both branches below behave exactly as
+    // they did before this existed when it is null.
+    const returnTo = resolveReturnTo(attempted, config, returnToConfig);
+
     if (loginRoute) {
       logger.debug(
         `[route-guard] path ${pathname} is protected and user is not authenticated; redirecting to in-app loginRoute ${loginRoute}`,
       );
-      return { type: 'redirect', to: loginRoute };
+      // SDK mode: the login page is the app's own, so the target rides as a
+      // query parameter it can read. Visible, debuggable, and it survives a
+      // cross-tab click — the emailed-link case that prompted this.
+      return {
+        type: 'redirect',
+        to: withReturnTo(loginRoute, returnTo, returnToConfig?.param),
+        ...(returnTo ? { returnTo } : {}),
+      };
     }
     logger.debug(`[route-guard] path ${pathname} is protected and user is not authenticated`);
-    return { type: 'login', loginUrl: authService.createLoginUrl() };
+    // Hosted mode: the target CANNOT ride on the URL. `createLoginUrl()` feeds
+    // `redirectUri` to the OAuth authorize call and bridge-api validates it with
+    // an exact `allowedRedirectUris.includes()` match, so appending a query would
+    // break login rather than improve it. Stash it instead; the app's OAuth
+    // callback picks it up with `takeReturnTo()`.
+    stashReturnTo(returnTo);
+    return {
+      type: 'login',
+      loginUrl: authService.createLoginUrl(),
+      ...(returnTo ? { returnTo } : {}),
+    };
   }
 
   // Check feature flag restriction
@@ -195,13 +267,16 @@ export function bridgeAuthGuard(): CanActivateFn {
     // being loaded (the route guard must never throw on a missing config).
     let paywallRoute: string | undefined;
     let loginRoute: string | undefined;
+    let configReturnTo: ReturnToConfig | undefined;
     try {
       const cfg = configService.getConfig();
       paywallRoute = cfg.billing?.paywallRoute;
       loginRoute = cfg.loginRoute;
+      configReturnTo = cfg.returnTo;
     } catch {
       paywallRoute = undefined;
       loginRoute = undefined;
+      configReturnTo = undefined;
     }
 
     const [pathname, search = ''] = state.url.split('?');
@@ -218,6 +293,23 @@ export function bridgeAuthGuard(): CanActivateFn {
     const effectiveLoginRoute =
       loginRoute && loginRoute !== pathname ? loginRoute : undefined;
 
+    // TBP-629 — hand the guard the FULL attempted target, not just the pathname.
+    // `?key=…` style query is part of the deep link for plenty of routes, and an
+    // exported-file link that loses its query is as broken as one that loses its
+    // path.
+    const attempted = search ? `${pathname}?${search}` : pathname;
+
+    // routeConfig wins over BridgeConfig so an app can keep all its routing in
+    // one object, but the login route is filled in from BridgeConfig either way
+    // — the app already told us where its login page is, and making them repeat
+    // it under `returnTo` would be a second source of truth that can drift.
+    const returnToConfig: ReturnToConfig = {
+      ...configReturnTo,
+      ...routeConfig.returnTo,
+      loginRoute:
+        routeConfig.returnTo?.loginRoute ?? configReturnTo?.loginRoute ?? loginRoute,
+    };
+
     const decision = await getNavigationDecision(
       pathname,
       routeConfig,
@@ -226,6 +318,8 @@ export function bridgeAuthGuard(): CanActivateFn {
       paywallRoute,
       isAuthCallbackInFlight,
       effectiveLoginRoute,
+      attempted,
+      returnToConfig,
     );
 
     switch (decision.type) {
@@ -235,7 +329,10 @@ export function bridgeAuthGuard(): CanActivateFn {
         window.location.href = decision.loginUrl;
         return false;
       case 'redirect':
-        return router.createUrlTree([decision.to]);
+        // `createUrlTree([to])` treats the whole string as one path segment and
+        // drops any query on it, which would silently discard the return target
+        // the login branch just attached. `parseUrl` keeps it.
+        return router.parseUrl(decision.to);
     }
   };
 }

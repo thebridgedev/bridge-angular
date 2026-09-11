@@ -311,3 +311,24 @@ export type {
   BillingSeverity,
   BillingPlanRef,
 } from '@nebulr-group/bridge-auth-core';
+
+// ── Deep-link preservation (TBP-629) ─────────────────────────────────────────
+// Re-exported from auth-core so an Angular login page can import the reader (and
+// its open-redirect validation) from the same package it already depends on,
+// instead of reaching past bridge-angular.
+export {
+  DEFAULT_RETURN_TO_PARAM,
+  readReturnTo,
+  sanitizeReturnTo,
+  takeReturnTo,
+  withReturnTo,
+} from '@nebulr-group/bridge-auth-core';
+export type { ReturnToConfig } from '@nebulr-group/bridge-auth-core';
+
+// ── SDK auth copy / translations (TBP-630) ───────────────────────────────────
+// The catalogue lives in auth-core so a translation fixed once is fixed in every
+// framework package. Apps normally set `locale` in `provideBridge()` and never
+// touch these.
+export { createConfigTranslator, TranslatableComponent } from './lib/i18n/translator';
+export { createTranslator, en, sv, LOCALES, hasLocale, normalizeLocale, interpolate } from '@nebulr-group/bridge-auth-core';
+export type { MessageKey, MessageOverrides, Messages, Translator } from '@nebulr-group/bridge-auth-core';

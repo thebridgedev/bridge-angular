@@ -19,6 +19,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../shared/services/auth.service';
+import { TranslatableComponent } from '../../i18n/translator';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
@@ -28,7 +29,7 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
   standalone: true,
   imports: [FormsModule, AuthFormWrapperComponent, AuthAlertComponent, AuthSpinnerComponent],
   template: `
-    <bridge-auth-form-wrapper heading="Two-factor authentication" [className]="className" [style]="style">
+    <bridge-auth-form-wrapper [heading]="wrapperHeading" [className]="className" [style]="style">
       @if (errorMsg()) {
         <bridge-auth-alert variant="error">{{ errorMsg() }}</bridge-auth-alert>
       }
@@ -36,13 +37,13 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
       @if (!useRecovery()) {
         <form (ngSubmit)="handleVerify()">
           <div class="bridge-form-group">
-            <label for="mfa-code">Authentication code</label>
+            <label for="mfa-code">{{ t('field.authenticationCode') }}</label>
             <input
               id="mfa-code"
               type="text"
               inputmode="numeric"
               autocomplete="one-time-code"
-              placeholder="Enter 6-digit code"
+              [placeholder]="t('placeholder.sixDigitCode')"
               maxlength="6"
               [(ngModel)]="code"
               name="code"
@@ -57,17 +58,17 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
             @if (loading()) {
               <bridge-auth-spinner [size]="16" />
             } @else {
-              Verify
+              {{ t('mfa.submit') }}
             }
           </button>
         </form>
         <p class="bridge-mfa-help">
           @if (resendCountdown() > 0) {
-            Didn't get your text message? You can resend in {{ resendCountdown() }}s.
+            {{ t('mfa.resendCountdown', { seconds: resendCountdown() }) }}
           } @else {
-            Didn't get your text message?
+            {{ t('mfa.resendPrompt') }}
             <button type="button" class="bridge-link" (click)="handleResend()" [disabled]="loading()">
-              Resend code
+              {{ t('action.resendCode') }}
             </button>
             .
           }
@@ -75,18 +76,18 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
         @if (showRecoveryOption) {
           <div class="bridge-form-footer">
             <button type="button" class="bridge-link" (click)="enableRecovery()">
-              Use recovery code
+              {{ t('mfa.useRecoveryCode') }}
             </button>
           </div>
         }
       } @else {
         <form (ngSubmit)="handleRecovery()">
           <div class="bridge-form-group">
-            <label for="backup-code">Recovery code</label>
+            <label for="backup-code">{{ t('field.recoveryCode') }}</label>
             <input
               id="backup-code"
               type="text"
-              placeholder="Enter recovery code"
+              [placeholder]="t('placeholder.recoveryCode')"
               [(ngModel)]="backupCode"
               name="backupCode"
               [disabled]="loading()"
@@ -100,21 +101,23 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
             @if (loading()) {
               <bridge-auth-spinner [size]="16" />
             } @else {
-              Recover
+              {{ t('mfa.recoverSubmit') }}
             }
           </button>
         </form>
         <div class="bridge-form-footer">
           <button type="button" class="bridge-link" (click)="disableRecovery()">
-            Use authentication code
+            {{ t('mfa.useAuthenticationCode') }}
           </button>
         </div>
       }
     </bridge-auth-form-wrapper>
   `,
 })
-export class MfaChallengeComponent implements OnDestroy {
+export class MfaChallengeComponent extends TranslatableComponent implements OnDestroy {
   @Input() showRecoveryOption = true;
+  /** Heading text. Pass `null`/`''` to render no heading and use your own page title. */
+  @Input() heading?: string | null;
   @Input() className = '';
   @Input() style = '';
   @Output() verified = new EventEmitter<void>();
@@ -128,6 +131,10 @@ export class MfaChallengeComponent implements OnDestroy {
   protected readonly errorMsg = signal<string | null>(null);
   protected readonly useRecovery = signal(false);
   protected readonly resendCountdown = signal(0);
+
+  protected get wrapperHeading(): string | null {
+    return this.heading !== undefined ? this.heading : this.t('mfa.challengeHeading');
+  }
 
   private intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -171,7 +178,7 @@ export class MfaChallengeComponent implements OnDestroy {
       this.code = '';
       this.startCountdown();
     } catch (err: any) {
-      this.errorMsg.set(err.message || 'Failed to resend code.');
+      this.errorMsg.set(err.message || this.t('mfa.error.resend'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);
@@ -186,7 +193,7 @@ export class MfaChallengeComponent implements OnDestroy {
       await (this.authService.getBridgeAuth() as any).verifyMfa(this.code);
       this.verified.emit();
     } catch (err: any) {
-      this.errorMsg.set(err.message || 'Invalid code. Please try again.');
+      this.errorMsg.set(err.message || this.t('mfa.error.invalidCode'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);
@@ -201,7 +208,7 @@ export class MfaChallengeComponent implements OnDestroy {
       await (this.authService.getBridgeAuth() as any).resetMfa(this.backupCode);
       this.verified.emit();
     } catch (err: any) {
-      this.errorMsg.set(err.message || 'Invalid recovery code.');
+      this.errorMsg.set(err.message || this.t('mfa.error.invalidRecoveryCode'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);

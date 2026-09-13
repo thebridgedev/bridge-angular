@@ -73,7 +73,7 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
     } @else if (authState() === 'mfa-setup-required') {
       <bridge-mfa-setup [messages]="messages" (error)="error.emit($event)" />
     } @else if (authState() === 'tenant-selection') {
-      <bridge-tenant-selector (error)="error.emit($event)" />
+      <bridge-tenant-selector [messages]="messages" (error)="error.emit($event)" />
     } @else if (step() === 'forgot-password') {
       <bridge-auth-form-wrapper
         [heading]="fpEmailSent() ? null : t('forgot.headingRequest')"

@@ -11,6 +11,7 @@
 import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
 import type { TenantUser } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../../shared/services/auth.service';
+import { TranslatableComponent } from '../../i18n/translator';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
@@ -20,7 +21,11 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
   standalone: true,
   imports: [AuthFormWrapperComponent, AuthAlertComponent, AuthSpinnerComponent],
   template: `
-    <bridge-auth-form-wrapper heading="Choose a workspace" [className]="className" [style]="style">
+    <bridge-auth-form-wrapper
+      [heading]="t('tenant.chooseHeading')"
+      [className]="className"
+      [style]="style"
+    >
       @if (errorMsg()) {
         <bridge-auth-alert variant="error">{{ errorMsg() }}</bridge-auth-alert>
       }
@@ -55,7 +60,7 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
     </bridge-auth-form-wrapper>
   `,
 })
-export class TenantSelectorComponent {
+export class TenantSelectorComponent extends TranslatableComponent {
   @Input() className = '';
   @Input() style = '';
   @Output() select = new EventEmitter<void>();
@@ -81,7 +86,7 @@ export class TenantSelectorComponent {
       await (this.authService.getBridgeAuth() as any).selectTenant(tenantUser.id);
       this.select.emit();
     } catch (err: any) {
-      this.errorMsg.set(err.message || 'Failed to select workspace.');
+      this.errorMsg.set(err.message || this.t('tenant.error.select'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);

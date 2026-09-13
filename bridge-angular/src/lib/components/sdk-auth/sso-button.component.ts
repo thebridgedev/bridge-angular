@@ -10,6 +10,7 @@
 import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
 import type { FederationConnection } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../../shared/services/auth.service';
+import { TranslatableComponent } from '../../i18n/translator';
 import { AuthSpinnerComponent } from './shared/spinner.component';
 
 @Component({
@@ -32,12 +33,12 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
         } @else {
           <ng-content></ng-content>
         }
-        <span>{{ label || ('Continue with ' + connection.name) }}</span>
+        <span>{{ buttonLabel() }}</span>
       </span>
     </button>
   `,
 })
-export class SsoButtonComponent {
+export class SsoButtonComponent extends TranslatableComponent {
   @Input({ required: true }) connection!: FederationConnection;
   @Input() label = '';
   @Input() mode: 'redirect' | 'popup' = 'redirect';
@@ -48,6 +49,18 @@ export class SsoButtonComponent {
 
   private readonly authService = inject(AuthService);
   protected readonly loading = signal(false);
+
+  /**
+   * `label` still wins: an app naming its own provider button is voice, not
+   * mechanics, and the catalogue only supplies the default (TBP-634).
+   *
+   * A method rather than a computed signal because `label`, `messages` and
+   * `connection` are all plain `@Input()`s, not signal inputs — a computed
+   * would capture their construction-time values and never update.
+   */
+  buttonLabel(): string {
+    return this.label || this.t('sso.continueWith', { provider: this.connection.name });
+  }
 
   async handleClick(): Promise<void> {
     if (this.loading()) return;
@@ -60,12 +73,12 @@ export class SsoButtonComponent {
       if (result.type === 'auth_success') {
         this.success.emit();
       } else if (result.type === 'auth_error') {
-        throw new Error(result.error || 'SSO login failed');
+        throw new Error(result.error || this.t('sso.error.login'));
       }
     } catch (err: any) {
       const message = err.message?.includes('popup')
-        ? 'Pop-up was blocked. Please allow pop-ups and try again.'
-        : err.message || 'SSO login failed';
+        ? this.t('sso.error.popupBlocked')
+        : err.message || this.t('sso.error.login');
       this.error.emit(new Error(message));
     } finally {
       this.loading.set(false);

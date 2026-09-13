@@ -21,6 +21,7 @@ import {
 } from '@angular/core';
 import type { Workspace } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../../shared/services/auth.service';
+import { TranslatableComponent } from '../../i18n/translator';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
 
@@ -76,7 +77,7 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
     </div>
   `,
 })
-export class WorkspaceSelectorComponent implements OnInit {
+export class WorkspaceSelectorComponent extends TranslatableComponent implements OnInit {
   @Input() className = '';
   @Input() style = '';
   @Output() switched = new EventEmitter<void>();
@@ -101,7 +102,7 @@ export class WorkspaceSelectorComponent implements OnInit {
       const ws = await (this.authService.getBridgeAuth() as any).getWorkspaces();
       this.workspaces.set(ws);
     } catch (err: any) {
-      this.loadError.set(err.message || 'Failed to load workspaces.');
+      this.loadError.set(err.message || this.t('workspace.error.load'));
     } finally {
       this.loadingList.set(false);
     }
@@ -115,7 +116,7 @@ export class WorkspaceSelectorComponent implements OnInit {
       await (this.authService.getBridgeAuth() as any).switchWorkspace(workspace.id);
       this.switched.emit();
     } catch (err: any) {
-      this.switchError.set(err.message || 'Failed to switch workspace.');
+      this.switchError.set(err.message || this.t('workspace.error.switch'));
       this.error.emit(err);
     } finally {
       this.switchingId.set(null);

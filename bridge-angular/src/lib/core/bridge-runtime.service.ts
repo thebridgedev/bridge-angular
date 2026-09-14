@@ -46,6 +46,7 @@ import {
 import {
   RealtimeClient,
   type RealtimeClientConfig,
+  type RealtimeStatus,
   type SessionSnapshotMessage,
   type UserStateMessage,
   useBridge,
@@ -56,7 +57,7 @@ import { AuthService } from '../shared/services/auth.service';
 import { logger } from '../shared/logger';
 import { applySessionSnapshot } from './snapshot-stores';
 import { bridgeEvents } from './events';
-import { _setRealtimeStatus } from './realtime-status';
+import { _setRealtimeStatus, _setRealtimeStatusDetail } from './realtime-status';
 import { setPlansLoader } from './dev-attributes';
 
 const DEFAULT_API_BASE_URL = 'https://api.thebridge.dev';
@@ -87,6 +88,8 @@ export class BridgeRuntimeService {
   private readonly _onSnapshotSubs = new Set<(msg: SessionSnapshotMessage) => void>();
   private readonly _onUserStateSubs = new Set<(event: { reason: string }) => void>();
   private readonly _onTokensSubs = new Set<(accessToken: string | undefined) => void>();
+  // TBP-644 — full realtime status (state + reason + whose side + retrying).
+  private readonly _onStatusSubs = new Set<(status: RealtimeStatus) => void>();
 
   constructor(
     private configService: BridgeConfigService,
@@ -111,12 +114,38 @@ export class BridgeRuntimeService {
     // from cloud-views; the lazy slice dedups + caches the result.
     setPlansLoader(async () => this.fetchPlans());
 
+    // TBP-644 — seed the token synchronously. The tokens effect below first
+    // runs on a later tick; seeding here means start() connects with the
+    // session that already exists, and that first effect run is not mistaken
+    // for a sign-in (which would reauthorize a connection still being made).
+    const initialToken = this.authService.tokens()?.accessToken ?? undefined;
+    this._currentAuthToken = initialToken;
+    this._prevAuthToken = initialToken;
+
     this._realtime = new RealtimeClient({
       ...(options.realtime ?? {}),
       apiBaseUrl,
       apiKey: config.appId,
       appId: config.appId,
       getAuthToken: () => this._currentAuthToken,
+      // TBP-644 — a refused connection gets ONE session refresh per episode
+      // (auth-core enforces the once) and reconnects with the new token
+      // instead of parking. A signed-out session has nothing to refresh. Loop
+      // safety: the refreshed token lands in the tokens effect, whose
+      // reauthorize() is a no-op while that episode is still connecting, and
+      // the reconnect it produces is flagged self-induced so setOnOpen does
+      // not refresh a second time.
+      refreshAuthToken:
+        options.realtime?.refreshAuthToken ??
+        (async () => {
+          if (!this._currentAuthToken) return undefined;
+          try {
+            const tokens = await this.authService.getBridgeAuth().refreshTokens();
+            return tokens?.accessToken ?? undefined;
+          } catch {
+            return undefined;
+          }
+        }),
     });
 
     this._realtime.setOnOpen(() => {
@@ -153,6 +182,31 @@ export class BridgeRuntimeService {
       for (const fn of this._onCloseSubs) {
         try {
           fn();
+        } catch {
+          /* subscriber errors swallowed */
+        }
+      }
+    });
+
+    // TBP-575 / TBP-644 — connected, handshaken, and subscribed to nothing.
+    // Distinct from 'closed': no reconnect is coming, but nothing will arrive.
+    // bridge-svelte wired this; angular never did, so a deaf connection read
+    // as 'open' here. Guarded: an older auth-core has no such hook.
+    this._realtime.setOnDegraded?.(() => {
+      _setRealtimeStatus('degraded');
+    });
+
+    // TBP-644 — the full status: why the connection is not working, whose side
+    // the fault is on, and whether it is still retrying. Guarded for the same
+    // reason as setOnDegraded.
+    this._realtime.setOnStatusChange?.((status) => {
+      _setRealtimeStatusDetail(status);
+      // A parked client never opens, so a reauthorize that ended in a refusal
+      // must not leave the self-induced flag set for the next genuine reconnect.
+      if (status.state === 'unauthorized') this._reauthInFlight = false;
+      for (const fn of this._onStatusSubs) {
+        try {
+          fn(status);
         } catch {
           /* subscriber errors swallowed */
         }
@@ -233,10 +287,26 @@ export class BridgeRuntimeService {
     void this._realtime.start();
   }
 
+  /**
+   * TBP-644 — the realtime connection must be re-authorized whenever the token
+   * VALUE changes: rotation (A → B), but also first sign-in (none → A) and
+   * sign-out (A → none). Keying this on rotation only meant a session that
+   * signed in after bootstrap kept the anonymous connection — or stayed parked
+   * after a refusal — until something else reconnected it. Flagged
+   * self-induced so setOnOpen skips its catch-up refresh (see the loop note
+   * there): the token we reconnect with is already current.
+   */
+  private reauthorizeForTokenChange(): void {
+    if (!this._realtime) return;
+    this._reauthInFlight = true;
+    void this._realtime.reauthorize();
+  }
+
   private onTokensChanged(accessToken: string | undefined, apiBaseUrl: string): void {
     const prevAuthToken = this._prevAuthToken;
     this._currentAuthToken = accessToken;
     this._prevAuthToken = accessToken;
+    const tokenChanged = prevAuthToken !== accessToken;
 
     const config = this.configService.getConfig();
     // Quota store hydrate requests carry the current access token.
@@ -257,11 +327,17 @@ export class BridgeRuntimeService {
       // its anonymous app-id auth.
       this._realtime.setUserId(undefined);
       this._realtime.setWorkspaceId(undefined);
+      // Reconnect as the signed-out session now, rather than riding the old
+      // user's socket until something else drops it.
+      if (tokenChanged) this.reauthorizeForTokenChange();
       return;
     }
 
     const claims = decodeJwtPayload(accessToken);
-    if (!claims) return;
+    if (!claims) {
+      if (tokenChanged) this.reauthorizeForTokenChange();
+      return;
+    }
 
     this._realtime.setAppId(typeof claims['aid'] === 'string' ? (claims['aid'] as string) : undefined);
     this._realtime.setWorkspaceId(
@@ -269,14 +345,10 @@ export class BridgeRuntimeService {
     );
     this._realtime.setUserId(typeof claims['sub'] === 'string' ? (claims['sub'] as string) : undefined);
 
-    // Token-only refresh (same user, new JWT): force a reauthorize so the
-    // server re-validates against the new token immediately.
-    if (prevAuthToken && accessToken && prevAuthToken !== accessToken) {
-      // Mark this as a self-induced reconnect so setOnOpen skips its proactive
-      // refresh (which would mint a new token → land back here → loop forever).
-      this._reauthInFlight = true;
-      void this._realtime.reauthorize();
-    }
+    // setUserId is a no-op when the user is unchanged (token-only refresh),
+    // and a setter-driven reconnect waits out a backoff and cannot lift a
+    // parked refusal — so reauthorize explicitly on every value change.
+    if (tokenChanged) this.reauthorizeForTokenChange();
 
     // Notify capability bootstrappers (e.g. flag eval context) of the change.
     for (const fn of this._onTokensSubs) {
@@ -323,6 +395,19 @@ export class BridgeRuntimeService {
   onSnapshot(handler: (msg: SessionSnapshotMessage) => void): () => void {
     this._onSnapshotSubs.add(handler);
     return () => this._onSnapshotSubs.delete(handler);
+  }
+
+  /**
+   * Subscribe to realtime status changes (TBP-644): state, the machine-readable
+   * reason, whose side a fault is on (`app` / `config` / `bridge` / `network`),
+   * whether the client is still retrying, a docs link and a support ref. Fires
+   * on every change, not with the current value — read the
+   * `realtimeStatusDetail` signal (or `BridgeService.realtimeStatusDetail`)
+   * for that. Returns an unsubscribe fn.
+   */
+  onStatus(handler: (status: RealtimeStatus) => void): () => void {
+    this._onStatusSubs.add(handler);
+    return () => this._onStatusSubs.delete(handler);
   }
 
   /** Subscribe to `user.state_changed` signals. Returns an unsubscribe fn. */

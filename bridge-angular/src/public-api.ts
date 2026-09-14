@@ -37,8 +37,12 @@ export type {
 export { LazySlice } from './lib/core/lazy-slice';
 export type { LazySliceOptions, LoadFn } from './lib/core/lazy-slice';
 
-// Reactive realtime connection status signal.
-export { realtimeStatus } from './lib/core/realtime-status';
+// Reactive realtime connection status signal. TBP-644 — `realtimeStatus` stays
+// the plain state; `realtimeStatusDetail` adds the reason, whose side it is and
+// whether it is still retrying (also on `BridgeService`; event-style via
+// `BridgeRuntimeService.onStatus`).
+export { realtimeStatus, realtimeStatusDetail } from './lib/core/realtime-status';
+export type { RealtimeStatus } from '@nebulr-group/bridge-auth-core';
 
 // ============================================================================
 // Services
@@ -101,6 +105,10 @@ export { QuotaBannerComponent } from './lib/components/subscription/quota-banner
 
 // Developer — API token management (parity with svelte ApiTokenManagement).
 export { ApiTokenManagementComponent } from './lib/components/developer/api-token-management.component';
+// TBP-644 — dev-only live-updates badge. `provideBridge()` already mounts it via
+// the mounter; both exported for apps that compose their own bootstrap.
+export { RealtimeDevBadgeComponent } from './lib/components/developer/realtime-dev-badge.component';
+export { RealtimeDevBadgeMounter } from './lib/components/developer/realtime-dev-badge.mounter';
 
 // ============================================================================
 // SDK Auth — in-app authentication UI (parity with svelte/react sdk-auth).

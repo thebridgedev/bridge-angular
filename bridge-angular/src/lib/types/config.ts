@@ -57,6 +57,15 @@ export interface BridgeConfig {
   debug?: boolean;
 
   /**
+   * Show the "Live updates off — why?" corner badge that `provideBridge()`
+   * mounts while realtime is refused, degraded or stuck retrying (TBP-644).
+   * It only ever renders in development mode (`isDevMode()`); set `false` to
+   * hide it there too. Production builds never show it.
+   * @default true
+   */
+  devBadge?: boolean;
+
+  /**
    * UI language for the SDK auth components, e.g. 'sv' or 'sv-SE' (TBP-630).
    * Region variants resolve to their primary subtag; an unknown locale falls
    * back to English rather than throwing.

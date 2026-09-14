@@ -55,7 +55,11 @@ import {
 import { BridgeConfigService } from '../config/bridge-config.service';
 import { AuthService } from '../shared/services/auth.service';
 import { logger } from '../shared/logger';
-import { applySessionSnapshot } from './snapshot-stores';
+import {
+  applyEntitlementsChanged,
+  applySessionSnapshot,
+  applySubscriptionPlanChanged,
+} from './snapshot-stores';
 import { bridgeEvents } from './events';
 import { _setRealtimeStatus, _setRealtimeStatusDetail } from './realtime-status';
 import { setPlansLoader } from './dev-attributes';
@@ -251,8 +255,19 @@ export class BridgeRuntimeService {
     useBridge().attachToRealtimeClient(this._realtime);
 
     // Billing-family events flow through the unified bridge events surface.
+    //
+    // TBP-644 — the two pushes that carry the complete new value also move the
+    // `bridge.tenant.*` signals, which were otherwise written only by
+    // `session.snapshot`. A plan change never re-sends a snapshot, so without
+    // this an upgraded app kept rendering the old plan until a reload. The
+    // signal is patched BEFORE dispatch so a `bridge.events` handler that reads
+    // `bridge.tenant.subscription()` already sees the new plan. Lifecycle events
+    // are deliberately not mirrored: their payloads carry no status.
     useBridge().handle({
-      'subscription.plan_changed': (msg) => bridgeEvents._dispatch(msg),
+      'subscription.plan_changed': (msg) => {
+        try { applySubscriptionPlanChanged(msg); } catch { /* signal updates shouldn't throw, defensive */ }
+        bridgeEvents._dispatch(msg);
+      },
       'payment.failed': (msg) => bridgeEvents._dispatch(msg),
       'payment.succeeded': (msg) => bridgeEvents._dispatch(msg),
       'subscription.created': (msg) => bridgeEvents._dispatch(msg),
@@ -268,7 +283,11 @@ export class BridgeRuntimeService {
       'dunning.recovered': (msg) => bridgeEvents._dispatch(msg),
       'dunning.exhausted': (msg) => bridgeEvents._dispatch(msg),
       'quota.updated': (msg) => bridgeEvents._dispatch(msg),
-      'entitlements.changed': (msg) => bridgeEvents._dispatch(msg),
+      'entitlements.changed': (msg) => {
+        // Only the payload-carrying variant has a map; the signal-only one is a no-op here.
+        try { applyEntitlementsChanged(msg as { entitlements?: unknown }); } catch { /* defensive */ }
+        bridgeEvents._dispatch(msg);
+      },
     });
 
     // Token-driven channel scoping. Svelte uses a tokenStore subscription; here

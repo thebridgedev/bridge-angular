@@ -62,6 +62,10 @@ export interface BridgeAppSurface {
 export interface BridgeTenantSurface {
   readonly id: Signal<string | null>;
   readonly name: Signal<string | null>;
+  /**
+   * Canonical subscription (plan + status + endsAt). Populated by session.snapshot
+   * and moved by every `subscription.plan_changed` push.
+   */
   readonly subscription: Signal<SubscriptionSnapshot | null>;
   readonly entitlements: {
     readonly snapshot: Signal<Record<string, boolean> | null>;

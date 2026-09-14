@@ -74,6 +74,15 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
       <bridge-mfa-setup [messages]="messages" (error)="error.emit($event)" />
     } @else if (authState() === 'tenant-selection') {
       <bridge-tenant-selector [messages]="messages" (error)="error.emit($event)" />
+    } @else if (authState() !== 'unauthenticated') {
+      <!-- Settling: session real, host app has not navigated yet. See the
+           class comment for why this tests !== unauthenticated (TBP-635). -->
+      <bridge-auth-form-wrapper [heading]="null" [className]="className" [style]="style">
+        <div class="bridge-auth-settling" data-bridge-auth-settling>
+          <bridge-auth-spinner [size]="24" />
+          <span>{{ t('login.submitting') }}</span>
+        </div>
+      </bridge-auth-form-wrapper>
     } @else if (step() === 'forgot-password') {
       <bridge-auth-form-wrapper
         [heading]="fpEmailSent() ? null : t('forgot.headingRequest')"
@@ -244,6 +253,26 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
     }
   `,
 })
+/**
+ * TBP-635 — why the settling branch tests `!== 'unauthenticated'`.
+ *
+ * The auth-state chain named `mfa-required`, `mfa-setup-required` and
+ * `tenant-selection`, and let everything else fall through to the credentials
+ * form. `authenticated` and `credentials-validated` are also everything else —
+ * so between the token exchange resolving and the host app's router landing,
+ * this drew a password field to somebody who had just typed their password
+ * correctly. That reads as a refusal, and the reasonable response is to type it
+ * again. LoginForm emits `login` and deliberately does not navigate, so the
+ * window is the consumer's navigation, not the network.
+ *
+ * Naming the two states fixes the two we know about and leaves the next
+ * `AuthState` member falling into the same hole. Inverting the test means the
+ * credentials form renders ONLY for `unauthenticated`, and anything else lands
+ * on a spinner — wrong-but-harmless instead of wrong-and-alarming.
+ *
+ * `login.submitting` is reused rather than given its own key: it already says
+ * "Signing in…" in all twelve locales.
+ */
 export class LoginFormComponent extends TranslatableComponent implements OnInit {
   @Input() showSignupLink?: boolean;
   @Input() signupHref = '/auth/signup';

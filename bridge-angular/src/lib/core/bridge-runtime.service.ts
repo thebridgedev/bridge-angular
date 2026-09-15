@@ -59,6 +59,8 @@ import {
   applyEntitlementsChanged,
   applySessionSnapshot,
   applySubscriptionPlanChanged,
+  tenantEntitlementsSignal,
+  tenantSubscriptionSignal,
 } from './snapshot-stores';
 import { bridgeEvents } from './events';
 import { _setRealtimeStatus, _setRealtimeStatusDetail } from './realtime-status';
@@ -76,7 +78,9 @@ export type BridgeAuthorizationChangeReason =
   | 'subscription.plan_changed'
   | 'entitlements.changed'
   | 'user.state_changed'
-  | 'token';
+  | 'token'
+  /** TBP-660 — the post-reconnect catch-up found state the live channel missed. */
+  | 'reconnect';
 
 export interface StartBridgeRuntimeOptions {
   /**
@@ -86,6 +90,11 @@ export interface StartBridgeRuntimeOptions {
   realtime?: Partial<
     Omit<RealtimeClientConfig, 'apiBaseUrl' | 'apiKey' | 'appId' | 'getAuthToken'>
   >;
+  /**
+   * HTTP used by the post-reconnect catch-up (TBP-660). Defaults to the global
+   * `fetch`; tests pass a stub.
+   */
+  fetch?: typeof fetch;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -98,6 +107,10 @@ export class BridgeRuntimeService {
   // setOnOpen knows the token is already fresh and skips its proactive refresh.
   private _reauthInFlight = false;
   private _prevAuthToken: string | undefined;
+  // TBP-660 — HTTP for the post-reconnect catch-up, and a sequence number so a
+  // slow catch-up that a newer reconnect superseded cannot write old state back.
+  private _fetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
+  private _catchUpSeq = 0;
 
   private readonly _onOpenSubs = new Set<() => void>();
   private readonly _onCloseSubs = new Set<() => void>();
@@ -129,6 +142,7 @@ export class BridgeRuntimeService {
 
     const config = this.configService.getConfig();
     const apiBaseUrl = config.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    if (options.fetch) this._fetch = options.fetch;
 
     // Wire the lazy plan-catalog loader. Fetches the workspace plan catalog
     // from cloud-views; the lazy slice dedups + caches the result.
@@ -187,6 +201,14 @@ export class BridgeRuntimeService {
             /* best-effort */
           });
       }
+      // TBP-660 — AppSync has no replay: anything published while the socket
+      // was down or being replaced is gone. That includes the reconnect OUR
+      // reauthorize() causes after user.state_changed → token refresh — the
+      // exact window in which the server publishes subscription.plan_changed,
+      // so a live plan change was lost in ~1 of 8 stage runs. Re-read billing
+      // state after every reconnect, reauthorize-caused or not. Loop-safe: the
+      // catch-up only GETs state and never touches the token.
+      if (this._connectedOnce) void this.catchUpAfterReconnect();
       this._connectedOnce = true;
       for (const fn of this._onOpenSubs) {
         try {
@@ -403,6 +425,76 @@ export class BridgeRuntimeService {
     // the subscribers above so the flag eval context already holds the new
     // claims when the current route is re-checked.
     if (tokenChanged) this.authorizationChanged('token');
+  }
+
+  /**
+   * TBP-660 — one catch-up per reconnect: `GET /billing/state` and
+   * `GET /entitlements`, applied to auth-core's billing stores and to
+   * `bridge.tenant.subscription` / `bridge.tenant.entitlements`. Reports an
+   * authorization change only when something actually moved, so a routine
+   * reconnect costs two GETs and nothing else. Signed-out sessions have no
+   * workspace state to repair. Never throws.
+   */
+  private async catchUpAfterReconnect(): Promise<void> {
+    const accessToken = this._currentAuthToken;
+    if (!accessToken) return;
+    const seq = ++this._catchUpSeq;
+
+    let appId: string;
+    let base: string;
+    try {
+      const config = this.configService.getConfig();
+      appId = config.appId;
+      base = (config.apiBaseUrl ?? DEFAULT_API_BASE_URL).replace(/\/+$/, '');
+    } catch {
+      return;
+    }
+    const auth = { Authorization: `Bearer ${accessToken}` };
+    const [billing, entitlementsBody] = await Promise.all([
+      this.getJson(`${base}/billing/state`, { ...auth, 'x-app-id': appId }),
+      this.getJson(`${base}/entitlements`, auth),
+    ]);
+    // A newer reconnect or a different session owns the stores now.
+    if (seq !== this._catchUpSeq || accessToken !== this._currentAuthToken) return;
+
+    let changed = false;
+
+    const state = billing as { plan?: { slug?: unknown; name?: unknown }; status?: unknown } | null;
+    if (state && typeof state.plan?.slug === 'string') {
+      const before = tenantSubscriptionSignal();
+      try {
+        useBridge().subscription.hydrate(state as Parameters<ReturnType<typeof useBridge>['subscription']['hydrate']>[0]);
+      } catch {
+        /* auth-core store unavailable — the tenant signal below still moves */
+      }
+      applySubscriptionPlanChanged({ to: state.plan, status: state.status });
+      const after = tenantSubscriptionSignal();
+      if (before?.plan?.slug !== after?.plan?.slug || before?.status !== after?.status) changed = true;
+    }
+
+    const map = (entitlementsBody as { entitlements?: unknown } | null)?.entitlements;
+    if (map && typeof map === 'object' && !Array.isArray(map)) {
+      const before = JSON.stringify(tenantEntitlementsSignal());
+      try {
+        useBridge().entitlementsStore.applyEntitlementsChanged(map as Record<string, boolean>);
+      } catch {
+        /* auth-core store unavailable — the tenant signal below still moves */
+      }
+      applyEntitlementsChanged({ entitlements: map });
+      if (before !== JSON.stringify(tenantEntitlementsSignal())) changed = true;
+    }
+
+    if (changed) this.authorizationChanged('reconnect');
+  }
+
+  private async getJson(url: string, headers: Record<string, string>): Promise<unknown> {
+    try {
+      const res = await this._fetch(url, { method: 'GET', headers });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
   }
 
   /**

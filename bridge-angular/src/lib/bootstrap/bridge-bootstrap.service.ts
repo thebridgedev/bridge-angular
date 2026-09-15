@@ -1,12 +1,14 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, Injector, signal } from '@angular/core';
 import type { BridgeAuthConfig } from '@nebulr-group/bridge-auth-core';
 import { BridgeConfigService } from '../config/bridge-config.service';
-import { type RouteGuardConfig } from '../guards/route-guard';
+import { recheckBridgeRoute, type RouteGuardConfig } from '../guards/route-guard';
 import { AuthService } from '../shared/services/auth.service';
 import { BridgeRuntimeService } from '../core/bridge-runtime.service';
 import { BridgeService } from '../core/bridge.service';
 import { logger, setLoggerConfigGetter } from '../shared/logger';
 import type { BridgeConfig } from '../types/config';
+
+const ROUTE_RECHECK_DEBOUNCE_MS = 50;
 
 /**
  * Bootstraps Bridge during Angular's `APP_INITIALIZER`. This is the Angular
@@ -19,13 +21,31 @@ import type { BridgeConfig } from '../types/config';
 export class BridgeBootstrapService {
   private readonly _ready = signal(false);
   readonly ready = this._ready.asReadonly();
+  private _recheckTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private configService: BridgeConfigService,
     private authService: AuthService,
     private runtime: BridgeRuntimeService,
     private bridge: BridgeService,
+    private injector: Injector,
   ) {}
+
+  /**
+   * TBP-654 — re-check the current route after an authorization change.
+   * Debounced: a plan change arrives as a burst (plan_changed +
+   * entitlements.changed + user.state_changed + the token refresh it causes),
+   * and each re-check may cost a paywall status round-trip.
+   */
+  private scheduleRouteRecheck(): void {
+    if (this._recheckTimer) clearTimeout(this._recheckTimer);
+    this._recheckTimer = setTimeout(() => {
+      this._recheckTimer = undefined;
+      recheckBridgeRoute(this.injector).catch((err) =>
+        logger.warn('[BridgeBootstrapService] route re-check failed', err),
+      );
+    }, ROUTE_RECHECK_DEBOUNCE_MS);
+  }
 
   async bootstrap(
     config: BridgeConfig | string,
@@ -68,6 +88,9 @@ export class BridgeBootstrapService {
     //    equivalent of svelte's <BridgeBootstrap /> mounting startBridgeRuntime.
     try {
       this.runtime.start();
+      // TBP-654 / TBP-653 — a plan, entitlements, user-state or token change can
+      // flip the verdict for the page the user is already on.
+      this.runtime.onAuthorizationChange(() => this.scheduleRouteRecheck());
       logger.debug('[BridgeBootstrapService] runtime started');
     } catch (err) {
       logger.warn('[BridgeBootstrapService] failed to start runtime', err);

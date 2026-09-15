@@ -17,7 +17,10 @@ export type {
   BridgeTenantSurface,
 } from './lib/core/bridge.service';
 export { BridgeRuntimeService } from './lib/core/bridge-runtime.service';
-export type { StartBridgeRuntimeOptions } from './lib/core/bridge-runtime.service';
+export type {
+  StartBridgeRuntimeOptions,
+  BridgeAuthorizationChangeReason,
+} from './lib/core/bridge-runtime.service';
 
 // Session-snapshot reactive types + reducer (advanced consumers).
 export type {

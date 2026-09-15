@@ -9,6 +9,11 @@ import {
 } from '@nebulr-group/bridge-auth-core';
 import { BridgeConfigService } from '../config/bridge-config.service';
 import { BridgeService } from '../core/bridge.service';
+import {
+  AUTHORIZATION_CHANGE_WAIT_MS,
+  pendingAuthorizationChange,
+  settleAuthorizationChange,
+} from '../core/pending-authorization-change';
 import { AuthService } from '../shared/services/auth.service';
 import { logger } from '../shared/logger';
 
@@ -151,6 +156,17 @@ async function getNavigationDecision(
   attempted?: string,
   returnToConfig?: ReturnToConfig,
 ): Promise<NavigationDecision> {
+  // TBP-654 (upgrade race) — a plan, entitlements or user-state change starts
+  // a token refresh, and the page shows the new plan before that token lands.
+  // Both reads below (signed-in, then the flag rule) use the current token, so
+  // wait for the refresh first: one bound for the whole decision. Past it,
+  // decide with the old token, which refuses a protected route (fail closed).
+  // A refresh that fails can sign the session out, so it lands before the
+  // signed-in check too. Nothing pending (always the case for a signed-out
+  // visitor) → no wait at all, not even a microtask.
+  if (pendingAuthorizationChange()) {
+    await settleAuthorizationChange(Date.now() + AUTHORIZATION_CHANGE_WAIT_MS);
+  }
   const authenticated = authService.isAuthenticated();
   const isPublic = isPublicRoute(pathname, config);
 

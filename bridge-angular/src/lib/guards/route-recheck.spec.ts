@@ -165,3 +165,14 @@ describe('the current page is re-checked after an authorization change (TBP-654)
   });
 });
 
+describe('fails closed (TBP-653)', () => {
+  it('no route config → the guarded route is denied, not allowed', async () => {
+    guardConfig = () => {
+      throw new Error('RouteGuardConfig has not been initialized.');
+    };
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await navigate('/dashboard')).toBe(false);
+    expect(router.url).toBe('/');
+    errors.mockRestore();
+  });
+});

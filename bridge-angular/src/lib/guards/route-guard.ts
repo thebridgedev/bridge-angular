@@ -346,9 +346,18 @@ async function decideNavigation(url: string, deps: GuardDeps): Promise<GuardOutc
   let routeConfig: RouteGuardConfig;
   try {
     routeConfig = configService.getRouteGuardConfig();
-  } catch {
-    // If no route config is set, allow all routes
-    return { type: 'allow' };
+  } catch (err) {
+    // TBP-653 — fail closed. With `provideBridge()` the route config always
+    // exists before the first navigation (APP_INITIALIZER runs first, and a
+    // missing routeConfig defaults to `{ rules: [], defaultAccess:
+    // 'protected' }`), so reaching this means the guard is mounted without a
+    // working Bridge bootstrap. It used to allow every route — exactly the
+    // routes the app asked us to protect.
+    logger.error(
+      '[route-guard] no route config — denying navigation. Is provideBridge() in your app config?',
+      err,
+    );
+    return { type: 'deny' };
   }
 
   // Read the optional billing.paywallRoute and loginRoute. Tolerate config not

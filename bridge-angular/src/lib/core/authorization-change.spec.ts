@@ -8,6 +8,9 @@
  * 2.0 rules live, but the same four triggers were invisible to everything that
  * caches or only re-evaluates on a signal: the reactive flag signals, auth-core's
  * legacy FeatureFlagService cache, and the page the user is already on.
+ *
+ * Also TBP-653 — a sign-out never reached the token subscribers, so the flag
+ * eval context kept the signed-out user's claims.
  */
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
@@ -210,3 +213,13 @@ describe('reactive flag reads re-evaluate when a rule input changes (TBP-654)', 
   });
 });
 
+describe('sign-out reaches the token subscribers (TBP-653)', () => {
+  it('the flag eval context is told the session ended', () => {
+    const seen: Array<string | undefined> = [];
+    offs.push(runtime.onTokens((t) => seen.push(t)));
+    const t = token();
+    setTokens(t);
+    setTokens(null);
+    expect(seen).toEqual([t, undefined]);
+  });
+});

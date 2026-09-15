@@ -387,14 +387,15 @@ export class BridgeRuntimeService {
       if (tokenChanged) this.reauthorizeForTokenChange();
     }
 
-    // Notify capability bootstrappers (e.g. flag eval context) of the change.
-    if (accessToken) {
-      for (const fn of this._onTokensSubs) {
-        try {
-          fn(accessToken);
-        } catch {
-          /* subscriber errors swallowed */
-        }
+    // Notify capability bootstrappers (e.g. flag eval context) of the change —
+    // on sign-out too. TBP-653: this used to return early for a missing token,
+    // so the flag eval context kept the signed-out user's claims (plan, role,
+    // tenant) and route rules kept evaluating as that user.
+    for (const fn of this._onTokensSubs) {
+      try {
+        fn(accessToken);
+      } catch {
+        /* subscriber errors swallowed */
       }
     }
 

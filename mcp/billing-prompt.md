@@ -138,32 +138,37 @@ Skip if the plans have no per-resource limits or feature differences.
 
 To show a live quota counter, drop in `<bridge-quota-banner metric="ai_completions" />` — it renders nothing below 80% of the cap, then a warning at 80–94% and a critical notice at ≥95%. It reads `useBridge().quota(metric)` (via `createQuotaSignal(metric)`) and ticks live as usage is reported, no polling. Inputs: `metric` (required), `label`, `onActionClick`, `actionHref` (Upgrade CTA destination; defaults to `billing.manageRoute` config → `/billing`).
 
-To gate a feature by entitlement, call `useBridge().entitlements.can('key')`:
+To gate a feature by entitlement, read `bridge.tenant.entitlements` from `BridgeService`. Its `snapshot` is a signal, so a `computed` over it keeps the template current:
 
 ```ts
-import { Component, computed } from '@angular/core';
-import { useBridge } from '@nebulr-group/bridge-angular';
+import { Component, computed, inject } from '@angular/core';
+import { BridgeService } from '@nebulr-group/bridge-angular';
 
 @Component({
   selector: 'app-analytics-link',
   standalone: true,
-  template: `@if (canAnalytics) { <a href="/analytics">Open advanced analytics</a> }`,
+  template: `@if (canAnalytics()) { <a href="/analytics">Open advanced analytics</a> }`,
 })
 export class AnalyticsLinkComponent {
-  readonly canAnalytics = useBridge().entitlements.can('advanced_analytics');
+  private readonly bridge = inject(BridgeService);
+  readonly canAnalytics = computed(
+    () => !!this.bridge.tenant.entitlements.snapshot()?.['advanced_analytics'],
+  );
 }
 ```
 
-`can()` returns `false` until hydrated (fail-closed) and flips when the plan changes or a `hard` quota exhausts. For a value that re-renders the template on every change, drive it through a `createQuotaSignal`/`createSubscriptionSignal`-style signal rather than reading `can()` once.
+The snapshot is `null` until it loads, so the check is `false` until then (fail-closed), and it is replaced live on every entitlements change (a plan change, or a `hard` quota running out). For a one-off check in an event handler, `this.bridge.tenant.entitlements.can('advanced_analytics')` returns the same answer. Don't store the result of `can()` in a field: it's read once and never updates.
 
 ## Step 4 — Reporting usage
 
 To make quota counters tick, report usage from your code. Fire-and-forget; the SDK queues durably:
 
 ```ts
-import { getBridgeAuth } from '@nebulr-group/bridge-angular';
+import { inject } from '@angular/core';
+import { AuthService } from '@nebulr-group/bridge-angular';
 
-getBridgeAuth().usage.report('ai_completions', 1); // value defaults to 1
+// In a component, service or other injection context:
+inject(AuthService).getBridgeAuth().usage.report('ai_completions', 1); // value defaults to 1
 ```
 
 Reporting to a metric not configured in the admin is accepted server-side but ticks no counter. Exceeding the cap always succeeds — the reaction is downstream (`metered` bills overage, `hard` flips the entitlement off).

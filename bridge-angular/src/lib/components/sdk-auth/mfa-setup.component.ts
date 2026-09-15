@@ -18,6 +18,7 @@ import { FormsModule } from '@angular/forms';
 import type { MessageKey, MessageOverrides } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../../shared/services/auth.service';
 import { TranslatableComponent } from '../../i18n/translator';
+import { authErrorMessage } from './shared/auth-error';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
@@ -204,7 +205,7 @@ export class MfaSetupComponent extends TranslatableComponent implements OnDestro
       this.step.set('verify');
       this.startCountdown();
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('mfaSetup.error.sendCode'));
+      this.errorMsg.set(authErrorMessage(err, this.translate, 'mfaSetup.error.sendCode'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);
@@ -220,7 +221,7 @@ export class MfaSetupComponent extends TranslatableComponent implements OnDestro
       this.code = '';
       this.startCountdown();
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('mfaSetup.error.resend'));
+      this.errorMsg.set(authErrorMessage(err, this.translate, 'mfaSetup.error.resend'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);
@@ -236,7 +237,7 @@ export class MfaSetupComponent extends TranslatableComponent implements OnDestro
       this.backupCode.set(result.backupCode ?? null);
       this.step.set('backup');
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('mfa.error.invalidCode'));
+      this.errorMsg.set(authErrorMessage(err, this.translate, 'mfa.error.invalidCode'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);

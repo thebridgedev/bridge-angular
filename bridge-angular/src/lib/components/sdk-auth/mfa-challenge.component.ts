@@ -20,6 +20,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../shared/services/auth.service';
 import { TranslatableComponent } from '../../i18n/translator';
+import { authErrorMessage } from './shared/auth-error';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
@@ -178,7 +179,7 @@ export class MfaChallengeComponent extends TranslatableComponent implements OnDe
       this.code = '';
       this.startCountdown();
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('mfa.error.resend'));
+      this.errorMsg.set(authErrorMessage(err, this.translate, 'mfa.error.resend'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);
@@ -193,7 +194,7 @@ export class MfaChallengeComponent extends TranslatableComponent implements OnDe
       await (this.authService.getBridgeAuth() as any).verifyMfa(this.code);
       this.verified.emit();
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('mfa.error.invalidCode'));
+      this.errorMsg.set(authErrorMessage(err, this.translate, 'mfa.error.invalidCode'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);
@@ -208,7 +209,7 @@ export class MfaChallengeComponent extends TranslatableComponent implements OnDe
       await (this.authService.getBridgeAuth() as any).resetMfa(this.backupCode);
       this.verified.emit();
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('mfa.error.invalidRecoveryCode'));
+      this.errorMsg.set(authErrorMessage(err, this.translate, 'mfa.error.invalidRecoveryCode'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);

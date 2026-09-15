@@ -9,6 +9,7 @@
 import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
 import { AuthService } from '../../shared/services/auth.service';
 import { TranslatableComponent } from '../../i18n/translator';
+import { authErrorMessage, displayError } from './shared/auth-error';
 import { AuthSpinnerComponent } from './shared/spinner.component';
 
 @Component({
@@ -62,7 +63,7 @@ export class PasskeyLoginComponent extends TranslatableComponent {
         throw new Error(result.error || this.t('passkey.error.auth'));
       }
     } catch (err: any) {
-      this.error.emit(new Error(err.message || this.t('passkey.error.auth')));
+      this.error.emit(displayError(err, authErrorMessage(err, this.translate, 'passkey.error.auth')));
     } finally {
       this.loading.set(false);
     }

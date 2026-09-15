@@ -37,7 +37,7 @@ import {
 } from './snapshot-stores';
 import { bridgeEvents, type BridgeEventsDispatcher } from './events';
 import { getDevAttributeProvider, getPlansSlice } from './dev-attributes';
-import { realtimeStatus } from './realtime-status';
+import { realtimeStatus, realtimeStatusDetail } from './realtime-status';
 import type { LazySlice } from './lazy-slice';
 import {
   createBridgeFlags,
@@ -46,7 +46,7 @@ import {
 } from '../flags/bootstrap';
 import { evaluateFlag } from '../flags/registry';
 import { flagSignal, flagVersions } from '../flags/flag-reactivity';
-import type { ConnectionState } from '@nebulr-group/bridge-auth-core';
+import type { ConnectionState, RealtimeStatus } from '@nebulr-group/bridge-auth-core';
 
 const DEFAULT_API_BASE_URL = 'https://api.thebridge.dev';
 
@@ -62,6 +62,10 @@ export interface BridgeAppSurface {
 export interface BridgeTenantSurface {
   readonly id: Signal<string | null>;
   readonly name: Signal<string | null>;
+  /**
+   * Canonical subscription (plan + status + endsAt). Populated by session.snapshot
+   * and moved by every `subscription.plan_changed` push.
+   */
   readonly subscription: Signal<SubscriptionSnapshot | null>;
   readonly entitlements: {
     readonly snapshot: Signal<Record<string, boolean> | null>;
@@ -101,6 +105,14 @@ export class BridgeService {
 
   /** Reactive realtime connection status. */
   readonly realtimeStatus: Signal<ConnectionState> = realtimeStatus;
+
+  /**
+   * Full realtime status (TBP-644) — the reason live updates are off, whose
+   * side it is, whether it is still retrying, a docs link and a support ref.
+   * `realtimeStatus` above stays the plain state, so existing bindings keep
+   * working. For event-style subscription use `BridgeRuntimeService.onStatus`.
+   */
+  readonly realtimeStatusDetail: Signal<RealtimeStatus> = realtimeStatusDetail;
 
   constructor(
     private configService: BridgeConfigService,

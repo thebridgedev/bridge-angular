@@ -1,5 +1,5 @@
-import { inject } from '@angular/core';
-import type { CanActivateFn } from '@angular/router';
+import { inject, type Injector } from '@angular/core';
+import type { CanActivateFn, UrlTree } from '@angular/router';
 import { Router } from '@angular/router';
 import {
   sanitizeReturnTo,
@@ -244,95 +244,178 @@ async function getNavigationDecision(
   return { type: 'allow' };
 }
 
+interface GuardDeps {
+  configService: BridgeConfigService;
+  authService: AuthService;
+  bridge: BridgeService;
+}
+
+type GuardOutcome = NavigationDecision | { type: 'deny' };
+
+/**
+ * The URL `bridgeAuthGuard` last let through. Guards only run on navigation;
+ * this is how a re-check (TBP-654) knows the page the user is on right now is
+ * one the guard protects — a route outside the guarded tree is never touched.
+ */
+let _lastAllowedUrl: string | null = null;
+
+/** Test-only. */
+export function __resetBridgeRouteGuardState(): void {
+  _lastAllowedUrl = null;
+}
+
 /**
  * Angular functional route guard that replicates bridge-svelte's route-guard.ts logic.
  * Apply via canActivateChild on a parent route to protect all child routes.
+ *
+ * It runs on every navigation into the guarded tree — including a guard's own
+ * UrlTree redirect and a route-config `redirectTo` into it — and holds no
+ * "already decided" state, so there is no first-navigation window (TBP-653).
  */
 export function bridgeAuthGuard(): CanActivateFn {
   return async (_route, state) => {
-    const configService = inject(BridgeConfigService);
-    const authService = inject(AuthService);
-    const bridge = inject(BridgeService);
+    const deps: GuardDeps = {
+      configService: inject(BridgeConfigService),
+      authService: inject(AuthService),
+      bridge: inject(BridgeService),
+    };
     const router = inject(Router);
 
-    let routeConfig: RouteGuardConfig;
-    try {
-      routeConfig = configService.getRouteGuardConfig();
-    } catch {
-      // If no route config is set, allow all routes
-      return true;
-    }
-
-    // Read the optional billing.paywallRoute and loginRoute. Tolerate config not
-    // being loaded (the route guard must never throw on a missing config).
-    let paywallRoute: string | undefined;
-    let loginRoute: string | undefined;
-    let configReturnTo: ReturnToConfig | undefined;
-    try {
-      const cfg = configService.getConfig();
-      paywallRoute = cfg.billing?.paywallRoute;
-      loginRoute = cfg.loginRoute;
-      configReturnTo = cfg.returnTo;
-    } catch {
-      paywallRoute = undefined;
-      loginRoute = undefined;
-      configReturnTo = undefined;
-    }
-
-    const [pathname, search = ''] = state.url.split('?');
-    // A Stripe/OAuth return carries these markers; the callback route resolves
-    // the final destination, so the paywall gate must not pre-empt it.
-    const callbackParams = new URLSearchParams(search);
-    const isAuthCallbackInFlight =
-      callbackParams.has('code') ||
-      callbackParams.has('stripe_success') ||
-      callbackParams.has('stripe_cancel');
-
-    // Guard against a redirect loop: never redirect the in-app login route to
-    // itself (it should be a public route, but be defensive).
-    const effectiveLoginRoute =
-      loginRoute && loginRoute !== pathname ? loginRoute : undefined;
-
-    // TBP-629 — hand the guard the FULL attempted target, not just the pathname.
-    // `?key=…` style query is part of the deep link for plenty of routes, and an
-    // exported-file link that loses its query is as broken as one that loses its
-    // path.
-    const attempted = search ? `${pathname}?${search}` : pathname;
-
-    // routeConfig wins over BridgeConfig so an app can keep all its routing in
-    // one object, but the login route is filled in from BridgeConfig either way
-    // — the app already told us where its login page is, and making them repeat
-    // it under `returnTo` would be a second source of truth that can drift.
-    const returnToConfig: ReturnToConfig = {
-      ...configReturnTo,
-      ...routeConfig.returnTo,
-      loginRoute:
-        routeConfig.returnTo?.loginRoute ?? configReturnTo?.loginRoute ?? loginRoute,
-    };
-
-    const decision = await getNavigationDecision(
-      pathname,
-      routeConfig,
-      authService,
-      bridge,
-      paywallRoute,
-      isAuthCallbackInFlight,
-      effectiveLoginRoute,
-      attempted,
-      returnToConfig,
-    );
-
-    switch (decision.type) {
+    const outcome = await decideNavigation(state.url, deps);
+    switch (outcome.type) {
       case 'allow':
+        _lastAllowedUrl = state.url;
         return true;
+      case 'deny':
+        return false;
       case 'login':
-        window.location.href = decision.loginUrl;
+        window.location.href = outcome.loginUrl;
         return false;
       case 'redirect':
         // `createUrlTree([to])` treats the whole string as one path segment and
         // drops any query on it, which would silently discard the return target
         // the login branch just attached. `parseUrl` keeps it.
-        return router.parseUrl(decision.to);
+        return router.parseUrl(outcome.to) as UrlTree;
     }
   };
+}
+
+/**
+ * Re-evaluate the page the user is on right now (TBP-654 / TBP-653).
+ *
+ * Angular guards only run on navigation, so a verdict that changes while the
+ * user stays put — sign-out or session expiry on a protected page, a downgrade
+ * or revoked entitlement on a plan-gated one — was never applied until the
+ * next click. `BridgeBootstrapService` calls this (debounced) whenever the
+ * runtime reports an authorization change. Only the URL the guard itself last
+ * allowed is re-checked; if the user navigated meanwhile, nothing happens.
+ */
+export async function recheckBridgeRoute(injector: Injector): Promise<void> {
+  const router = injector.get(Router, null);
+  if (!router) return;
+  const url = router.url;
+  if (!_lastAllowedUrl || url !== _lastAllowedUrl) return;
+
+  const outcome = await decideNavigation(url, {
+    configService: injector.get(BridgeConfigService),
+    authService: injector.get(AuthService),
+    bridge: injector.get(BridgeService),
+  });
+  // The user moved on while we were deciding — their new route was guarded by
+  // its own navigation.
+  if (router.url !== url) return;
+
+  switch (outcome.type) {
+    case 'allow':
+    case 'deny':
+      return;
+    case 'login':
+      _lastAllowedUrl = null;
+      window.location.href = outcome.loginUrl;
+      return;
+    case 'redirect':
+      _lastAllowedUrl = null;
+      await router.navigateByUrl(router.parseUrl(outcome.to), { replaceUrl: true });
+      return;
+  }
+}
+
+async function decideNavigation(url: string, deps: GuardDeps): Promise<GuardOutcome> {
+  const { configService, authService, bridge } = deps;
+
+  let routeConfig: RouteGuardConfig;
+  try {
+    routeConfig = configService.getRouteGuardConfig();
+  } catch (err) {
+    // TBP-653 — fail closed. With `provideBridge()` the route config always
+    // exists before the first navigation (APP_INITIALIZER runs first, and a
+    // missing routeConfig defaults to `{ rules: [], defaultAccess:
+    // 'protected' }`), so reaching this means the guard is mounted without a
+    // working Bridge bootstrap. It used to allow every route — exactly the
+    // routes the app asked us to protect.
+    logger.error(
+      '[route-guard] no route config — denying navigation. Is provideBridge() in your app config?',
+      err,
+    );
+    return { type: 'deny' };
+  }
+
+  // Read the optional billing.paywallRoute and loginRoute. Tolerate config not
+  // being loaded (the route guard must never throw on a missing config).
+  let paywallRoute: string | undefined;
+  let loginRoute: string | undefined;
+  let configReturnTo: ReturnToConfig | undefined;
+  try {
+    const cfg = configService.getConfig();
+    paywallRoute = cfg.billing?.paywallRoute;
+    loginRoute = cfg.loginRoute;
+    configReturnTo = cfg.returnTo;
+  } catch {
+    paywallRoute = undefined;
+    loginRoute = undefined;
+    configReturnTo = undefined;
+  }
+
+  const [pathname, search = ''] = url.split('?');
+  // A Stripe/OAuth return carries these markers; the callback route resolves
+  // the final destination, so the paywall gate must not pre-empt it.
+  const callbackParams = new URLSearchParams(search);
+  const isAuthCallbackInFlight =
+    callbackParams.has('code') ||
+    callbackParams.has('stripe_success') ||
+    callbackParams.has('stripe_cancel');
+
+  // Guard against a redirect loop: never redirect the in-app login route to
+  // itself (it should be a public route, but be defensive).
+  const effectiveLoginRoute =
+    loginRoute && loginRoute !== pathname ? loginRoute : undefined;
+
+  // TBP-629 — hand the guard the FULL attempted target, not just the pathname.
+  // `?key=…` style query is part of the deep link for plenty of routes, and an
+  // exported-file link that loses its query is as broken as one that loses its
+  // path.
+  const attempted = search ? `${pathname}?${search}` : pathname;
+
+  // routeConfig wins over BridgeConfig so an app can keep all its routing in
+  // one object, but the login route is filled in from BridgeConfig either way
+  // — the app already told us where its login page is, and making them repeat
+  // it under `returnTo` would be a second source of truth that can drift.
+  const returnToConfig: ReturnToConfig = {
+    ...configReturnTo,
+    ...routeConfig.returnTo,
+    loginRoute:
+      routeConfig.returnTo?.loginRoute ?? configReturnTo?.loginRoute ?? loginRoute,
+  };
+
+  return getNavigationDecision(
+    pathname,
+    routeConfig,
+    authService,
+    bridge,
+    paywallRoute,
+    isAuthCallbackInFlight,
+    effectiveLoginRoute,
+    attempted,
+    returnToConfig,
+  );
 }

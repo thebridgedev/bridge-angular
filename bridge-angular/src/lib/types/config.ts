@@ -46,7 +46,9 @@ export interface BridgeConfig {
    * realtime runtime (live updates channel). Distinct from `authBaseUrl`
    * (which includes the `/auth` path) and `cloudViewsUrl`.
    * @default 'https://api.thebridge.dev'
-   * @env NG_APP_BRIDGE_API_BASE_URL
+   *
+   * The SDK reads no environment variables. To target stage or a local API,
+   * pass this from your own env (e.g. `environment.bridgeApiBaseUrl`).
    */
   apiBaseUrl?: string;
 
@@ -55,6 +57,15 @@ export interface BridgeConfig {
    * @default false
    */
   debug?: boolean;
+
+  /**
+   * Show the "Live updates off — why?" corner badge that `provideBridge()`
+   * mounts while realtime is refused, degraded or stuck retrying (TBP-644).
+   * It only ever renders in development mode (`isDevMode()`); set `false` to
+   * hide it there too. Production builds never show it.
+   * @default true
+   */
+  devBadge?: boolean;
 
   /**
    * UI language for the SDK auth components, e.g. 'sv' or 'sv-SE' (TBP-630).

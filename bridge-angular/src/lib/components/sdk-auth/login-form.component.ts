@@ -38,6 +38,7 @@ import { TenantSelectorComponent } from './tenant-selector.component';
 import { SsoButtonComponent } from './sso-button.component';
 import { SsoProviderIconComponent } from './sso-provider-icon.component';
 import { PasskeyLoginComponent } from './passkey-login.component';
+import { authErrorMessage, isOriginNotAllowed } from './shared/auth-error';
 
 function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[] {
   if (!appConfig) return [];
@@ -69,14 +70,15 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
   ],
   template: `
     @if (authState() === 'mfa-required') {
-      <bridge-mfa-challenge [messages]="messages" (error)="error.emit($event)" />
+      <bridge-mfa-challenge [messages]="messages" (error)="handleChildError($event)" />
     } @else if (authState() === 'mfa-setup-required') {
-      <bridge-mfa-setup [messages]="messages" (error)="error.emit($event)" />
+      <bridge-mfa-setup [messages]="messages" (error)="handleChildError($event)" />
     } @else if (authState() === 'tenant-selection') {
-      <bridge-tenant-selector [messages]="messages" (error)="error.emit($event)" />
-    } @else if (authState() !== 'unauthenticated') {
+      <bridge-tenant-selector [messages]="messages" (error)="handleChildError($event)" />
+    } @else if (authState() !== 'unauthenticated' && !errorRaisedHere()) {
       <!-- Settling: session real, host app has not navigated yet. See the
-           class comment for why this tests !== unauthenticated (TBP-635). -->
+           class comment for why this tests !== unauthenticated (TBP-635), and
+           why an error raised at this very state falls through (TBP-669). -->
       <bridge-auth-form-wrapper [heading]="null" [className]="className" [style]="style">
         <div class="bridge-auth-settling" data-bridge-auth-settling>
           <bridge-auth-spinner [size]="24" />
@@ -202,7 +204,7 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
               [messages]="messages"
               className="bridge-btn bridge-btn-secondary bridge-sso-btn"
               (login)="login.emit()"
-              (error)="error.emit($event)"
+              (error)="handleChildError($event)"
             />
           </div>
         }
@@ -301,6 +303,17 @@ export class LoginFormComponent extends TranslatableComponent implements OnInit 
   password = '';
   protected readonly loading = signal(false);
   protected readonly errorMsg = signal<string | null>(null);
+  /**
+   * The auth state `errorMsg` was raised in (TBP-669). A failure that leaves
+   * the state where it was — the published auth-core keeps
+   * `credentials-validated` after a failed token exchange — must show the
+   * error, not the settling spinner; an error left over from an earlier
+   * attempt must not hijack a later sign-in that moved the state on.
+   */
+  private readonly errorAtState = signal<string | null>(null);
+  protected readonly errorRaisedHere = computed(
+    () => !!this.errorMsg() && this.errorAtState() === this.authState(),
+  );
   protected readonly showPassword = signal(false);
 
   // Inline forgot-password step machine — mirrors svelte/react.
@@ -359,7 +372,7 @@ export class LoginFormComponent extends TranslatableComponent implements OnInit 
     (this.authService.getBridgeAuth() as any)
       .authenticateWithMagicLinkToken(magicToken)
       .catch((err: any) => {
-        this.errorMsg.set(err.message || this.t('magicLink.error.auth'));
+        this.showError(authErrorMessage(err, this.translate, 'magicLink.error.auth'));
         this.error.emit(err);
       })
       .finally(() => this.loading.set(false));
@@ -372,10 +385,31 @@ export class LoginFormComponent extends TranslatableComponent implements OnInit 
     try {
       await this.authService.getBridgeAuth().authenticate(this.email, this.password);
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('login.error.invalidCredentials'));
+      this.showError(authErrorMessage(err, this.translate, 'login.error.invalidCredentials'));
       this.error.emit(err);
       this.loading.set(false);
     }
+  }
+
+  /** Show `message`, remembering the auth state it was raised in (TBP-669). */
+  private showError(message: string): void {
+    this.errorMsg.set(message);
+    this.errorAtState.set(this.authState());
+  }
+
+  /**
+   * TBP-669 — an origin refusal inside MFA, workspace selection or a passkey
+   * sign-in ends the sign-in: auth-core returns to `unauthenticated`, which
+   * unmounts the child that caught the error (and PasskeyLogin has no alert of
+   * its own). LoginForm keeps the message so the credentials form can show
+   * it. Other child errors stay with the child.
+   */
+  handleChildError(err: Error): void {
+    if (isOriginNotAllowed(err)) {
+      this.showError(authErrorMessage(err, this.translate, 'login.error.invalidCredentials'));
+      this.loading.set(false);
+    }
+    this.error.emit(err);
   }
 
   openForgot(): void {
@@ -397,7 +431,7 @@ export class LoginFormComponent extends TranslatableComponent implements OnInit 
       await this.authService.getBridgeAuth().sendResetPasswordLink(this.email);
       this.fpEmailSent.set(true);
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('forgot.error.send'));
+      this.showError(authErrorMessage(err, this.translate, 'forgot.error.send'));
       this.error.emit(err);
     } finally {
       this.fpLoading.set(false);

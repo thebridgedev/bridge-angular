@@ -8,6 +8,7 @@
 import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
 import { AuthService } from '../../shared/services/auth.service';
 import { TranslatableComponent } from '../../i18n/translator';
+import { authErrorMessage } from './shared/auth-error';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
@@ -99,7 +100,7 @@ export class PasskeySetupComponent extends TranslatableComponent {
       this.done.set(true);
       this.complete.emit();
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('passkey.error.setupFailed'));
+      this.errorMsg.set(authErrorMessage(err, this.translate, 'passkey.error.setupFailed'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);

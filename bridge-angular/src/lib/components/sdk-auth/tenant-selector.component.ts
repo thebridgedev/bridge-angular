@@ -12,6 +12,7 @@ import { Component, EventEmitter, Input, Output, inject, signal } from '@angular
 import type { TenantUser } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../../shared/services/auth.service';
 import { TranslatableComponent } from '../../i18n/translator';
+import { authErrorMessage } from './shared/auth-error';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
@@ -86,7 +87,7 @@ export class TenantSelectorComponent extends TranslatableComponent {
       await (this.authService.getBridgeAuth() as any).selectTenant(tenantUser.id);
       this.select.emit();
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('tenant.error.select'));
+      this.errorMsg.set(authErrorMessage(err, this.translate, 'tenant.error.select'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);

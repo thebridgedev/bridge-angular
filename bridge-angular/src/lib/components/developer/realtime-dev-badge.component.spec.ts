@@ -114,6 +114,28 @@ describe('<bridge-realtime-dev-badge>', () => {
     render(unauthorized, false);
     expect(el().querySelector('[data-testid="bridge-realtime-dev-badge-root"]')).toBeNull();
   });
+
+  it('origin_not_allowed (TBP-669): names the allowed origins and shows the fix, even while open', () => {
+    // As an auth-core before TBP-669 passes it through from /realtime/diagnose:
+    // side `app`, no hint, and `open` because only the app channel was refused.
+    render({ state: 'open', reason: 'origin_not_allowed', side: 'app', retrying: false, ref: 'o1', since: 1 });
+    toggle()!.click();
+    fixture.detectChanges();
+    const panel = el().querySelector('#bridge-realtime-dev-badge-panel')!;
+    expect(panel.textContent).toContain('origin_not_allowed');
+    expect(panel.textContent).toContain('allowed origins');
+    expect(panel.textContent).not.toContain('apiBaseUrl');
+    const hint = el().querySelector('[data-testid="bridge-realtime-dev-badge-hint"]');
+    expect(hint?.textContent).toContain(window.location.origin);
+    expect(hint?.textContent).toContain('Authentication → Security → Allowed Origins');
+  });
+
+  it('shows no Fix row for reasons without a fix sentence', () => {
+    render(unauthorized);
+    toggle()!.click();
+    fixture.detectChanges();
+    expect(el().querySelector('[data-testid="bridge-realtime-dev-badge-hint"]')).toBeNull();
+  });
 });
 
 describe('RealtimeDevBadgeMounter', () => {

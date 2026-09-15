@@ -11,6 +11,7 @@ import { Component, EventEmitter, Input, Output, inject, signal } from '@angular
 import type { FederationConnection } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../../shared/services/auth.service';
 import { TranslatableComponent } from '../../i18n/translator';
+import { authErrorMessage, displayError } from './shared/auth-error';
 import { AuthSpinnerComponent } from './shared/spinner.component';
 
 @Component({
@@ -78,8 +79,8 @@ export class SsoButtonComponent extends TranslatableComponent {
     } catch (err: any) {
       const message = err.message?.includes('popup')
         ? this.t('sso.error.popupBlocked')
-        : err.message || this.t('sso.error.login');
-      this.error.emit(new Error(message));
+        : authErrorMessage(err, this.translate, 'sso.error.login');
+      this.error.emit(displayError(err, message));
     } finally {
       this.loading.set(false);
     }

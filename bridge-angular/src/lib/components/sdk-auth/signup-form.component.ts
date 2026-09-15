@@ -12,6 +12,7 @@ import { Component, EventEmitter, Input, Output, inject, signal } from '@angular
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../shared/services/auth.service';
 import { TranslatableComponent } from '../../i18n/translator';
+import { authErrorMessage } from './shared/auth-error';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
@@ -151,7 +152,7 @@ export class SignupFormComponent extends TranslatableComponent {
       this.success.set(true);
       this.signup.emit();
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('signup.error.create'));
+      this.errorMsg.set(authErrorMessage(err, this.translate, 'signup.error.create'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);

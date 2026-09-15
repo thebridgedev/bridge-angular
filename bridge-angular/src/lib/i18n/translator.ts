@@ -77,4 +77,7 @@ export abstract class TranslatableComponent {
   t(key: Parameters<Translator>[0], vars?: Parameters<Translator>[1]): string {
     return createConfigTranslator(this.configService, this.messages)(key, vars);
   }
+
+  /** `t` as a standalone function, for helpers that take a translator (TBP-669 `authErrorMessage`). */
+  protected readonly translate: Translator = (key, vars) => this.t(key, vars);
 }

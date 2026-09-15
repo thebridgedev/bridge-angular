@@ -10,6 +10,7 @@ import { Component, EventEmitter, Input, Output, computed, inject, signal } from
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../shared/services/auth.service';
 import { TranslatableComponent } from '../../i18n/translator';
+import { authErrorMessage } from './shared/auth-error';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
@@ -178,7 +179,7 @@ export class ForgotPasswordComponent extends TranslatableComponent {
       await this.authService.getBridgeAuth().sendResetPasswordLink(this.email);
       this.emailSent.set(true);
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('forgot.error.send'));
+      this.errorMsg.set(authErrorMessage(err, this.translate, 'forgot.error.send'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);
@@ -204,7 +205,7 @@ export class ForgotPasswordComponent extends TranslatableComponent {
       this.passwordReset.set(true);
       this.complete.emit();
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('forgot.error.update'));
+      this.errorMsg.set(authErrorMessage(err, this.translate, 'forgot.error.update'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);

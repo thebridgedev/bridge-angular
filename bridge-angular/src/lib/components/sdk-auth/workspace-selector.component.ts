@@ -22,6 +22,7 @@ import {
 import type { Workspace } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../../shared/services/auth.service';
 import { TranslatableComponent } from '../../i18n/translator';
+import { authErrorMessage } from './shared/auth-error';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
 
@@ -102,7 +103,7 @@ export class WorkspaceSelectorComponent extends TranslatableComponent implements
       const ws = await (this.authService.getBridgeAuth() as any).getWorkspaces();
       this.workspaces.set(ws);
     } catch (err: any) {
-      this.loadError.set(err.message || this.t('workspace.error.load'));
+      this.loadError.set(authErrorMessage(err, this.translate, 'workspace.error.load'));
     } finally {
       this.loadingList.set(false);
     }
@@ -116,7 +117,7 @@ export class WorkspaceSelectorComponent extends TranslatableComponent implements
       await (this.authService.getBridgeAuth() as any).switchWorkspace(workspace.id);
       this.switched.emit();
     } catch (err: any) {
-      this.switchError.set(err.message || this.t('workspace.error.switch'));
+      this.switchError.set(authErrorMessage(err, this.translate, 'workspace.error.switch'));
       this.error.emit(err);
     } finally {
       this.switchingId.set(null);

@@ -74,6 +74,12 @@ import {
                   <span class="bridge-rt-label">Whose side</span>
                   <span class="bridge-rt-value">{{ v.sideLabel }}</span>
                 </div>
+                @if (v.hint) {
+                  <div class="bridge-rt-row">
+                    <span class="bridge-rt-label">Fix</span>
+                    <span class="bridge-rt-value" data-testid="bridge-realtime-dev-badge-hint">{{ v.hint }}</span>
+                  </div>
+                }
                 @if (v.ref) {
                   <div class="bridge-rt-row">
                     <span class="bridge-rt-label">Ref</span>

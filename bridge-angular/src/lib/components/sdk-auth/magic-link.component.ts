@@ -9,6 +9,7 @@ import { Component, EventEmitter, Input, Output, inject, signal } from '@angular
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../shared/services/auth.service';
 import { TranslatableComponent } from '../../i18n/translator';
+import { authErrorMessage } from './shared/auth-error';
 import { AuthFormWrapperComponent } from './shared/auth-form-wrapper.component';
 import { AuthAlertComponent } from './shared/alert.component';
 import { AuthSpinnerComponent } from './shared/spinner.component';
@@ -120,7 +121,7 @@ export class MagicLinkComponent extends TranslatableComponent {
       this.sent.set(true);
       this.sentEvent.emit();
     } catch (err: any) {
-      this.errorMsg.set(err.message || this.t('magicLink.error.send'));
+      this.errorMsg.set(authErrorMessage(err, this.translate, 'magicLink.error.send'));
       this.error.emit(err);
     } finally {
       this.loading.set(false);

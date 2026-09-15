@@ -165,11 +165,11 @@ describe('each trigger invalidates once, before the app hears the event (TBP-654
     expect(log).toEqual(['invalidate', 'authz:entitlements.changed', 'dispatch:entitlements']);
   });
 
-  it('user.state_changed — before the token refresh it causes', async () => {
+  it('user.state_changed — signed out, so no token refresh (TBP-654)', async () => {
     await userStateHook({ kind: 'user.state_changed', reason: 'plan_changed' });
     expect(reasons).toEqual(['user.state_changed']);
     expect(auth.invalidations).toBe(1);
-    expect(log).toEqual(['invalidate', 'authz:user.state_changed', 'refresh']);
+    expect(log).toEqual(['invalidate', 'authz:user.state_changed']);
   });
 
   it('every access-token change — sign-in, refresh, sign-out — once each', () => {

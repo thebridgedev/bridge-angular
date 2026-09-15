@@ -66,6 +66,11 @@ import { bridgeEvents } from './events';
 import { _setRealtimeStatus, _setRealtimeStatusDetail } from './realtime-status';
 import { setPlansLoader } from './dev-attributes';
 import { notifyAllFlagsChanged } from '../flags/registry';
+import {
+  clearPendingAuthorizationChange,
+  pendingAuthorizationChange,
+  trackAuthorizationChange,
+} from './pending-authorization-change';
 
 const DEFAULT_API_BASE_URL = 'https://api.thebridge.dev';
 
@@ -111,6 +116,7 @@ export class BridgeRuntimeService {
   // slow catch-up that a newer reconnect superseded cannot write old state back.
   private _fetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
   private _catchUpSeq = 0;
+  private _apiBaseUrl = DEFAULT_API_BASE_URL;
 
   private readonly _onOpenSubs = new Set<() => void>();
   private readonly _onCloseSubs = new Set<() => void>();
@@ -142,6 +148,7 @@ export class BridgeRuntimeService {
 
     const config = this.configService.getConfig();
     const apiBaseUrl = config.apiBaseUrl ?? DEFAULT_API_BASE_URL;
+    this._apiBaseUrl = apiBaseUrl;
     if (options.fetch) this._fetch = options.fetch;
 
     // Wire the lazy plan-catalog loader. Fetches the workspace plan catalog
@@ -275,6 +282,8 @@ export class BridgeRuntimeService {
     // tokens effect below and re-bind channel scopes / re-eval flags.
     this._realtime.setOnUserState(async (msg: UserStateMessage) => {
       // TBP-654 — role / plan / attribute changes can flip a route verdict.
+      // This starts the token refresh (or joins the one a preceding
+      // plan_changed started).
       this.authorizationChanged('user.state_changed');
       for (const fn of this._onUserStateSubs) {
         try {
@@ -283,10 +292,22 @@ export class BridgeRuntimeService {
           /* subscriber errors swallowed */
         }
       }
-      try {
-        await this.authService.maybeRefreshNow();
-      } catch {
-        /* next scheduled refresh will pick it up */
+      // Never rejects; a failed refresh is picked up by the next scheduled one.
+      await pendingAuthorizationChange();
+      // The refresh this joined may have been minted BEFORE the server bumped
+      // the token version this message announces: a plan_changed that arrived
+      // first started it, and the server bumps after publishing plan_changed.
+      // Such a token carries the new plan but is `TOKEN_VERSION_STALE` for
+      // every version-checked endpoint (`/billing/state` 401 → "Subscription
+      // unavailable" on stage). One follow-up refresh, only when the token we
+      // ended up with is behind the announced version — so it cannot loop, and
+      // an older server that sends no version keeps the single refresh.
+      const announced = (msg as { tokenVersion?: unknown }).tokenVersion;
+      if (typeof announced === 'number') {
+        const tv = decodeJwtPayload(this._currentAuthToken ?? '')?.['tv'];
+        if (typeof tv === 'number' && tv < announced) {
+          await this.refreshForAuthorizationChange();
+        }
       }
     });
 
@@ -521,6 +542,8 @@ export class BridgeRuntimeService {
       /* BridgeAuth not initialised yet — nothing cached */
     }
     notifyAllFlagsChanged();
+    // A new token IS the refreshed state; every other reason needs one.
+    if (reason !== 'token') void this.refreshForAuthorizationChange();
     for (const fn of this._onAuthorizationChangeSubs) {
       try {
         fn(reason);
@@ -528,6 +551,47 @@ export class BridgeRuntimeService {
         /* subscriber errors swallowed */
       }
     }
+  }
+
+  /**
+   * TBP-654 (upgrade race) — the page shows a new plan as soon as
+   * `subscription.plan_changed` patches `bridge.tenant.subscription`, but the
+   * access token that carries the new plan only arrives with the next
+   * refresh. That refresh used to start on `user.state_changed`, which the
+   * server publishes AFTER `plan_changed` (TBP-660), so a user who clicked into
+   * a plan-gated route the moment the page said "Pro" was judged on the old
+   * token and refused (2 of 6 stage runs on bridge-svelte).
+   *
+   * So every authorization-affecting event starts the refresh immediately and
+   * registers it as the pending authorization change the route guard waits
+   * for (bounded) before deciding. One refresh per burst: an event that
+   * arrives while one is in flight joins it. No loop: the refreshed token only
+   * re-runs `authorizationChanged('token')`, which never refreshes, and the
+   * reconnect it causes is flagged self-induced. A signed-out session has no
+   * token to refresh and no pending change.
+   *
+   * The new token is pushed through `onTokensChanged` before the pending
+   * change settles. The tokens `effect()` would do it too, but Angular runs
+   * effects later, and a guard that resumed in between would still evaluate
+   * the old claims. The effect then sees an unchanged value.
+   */
+  private refreshForAuthorizationChange(): Promise<void> | undefined {
+    if (!this._currentAuthToken) return undefined;
+    const pending = pendingAuthorizationChange();
+    if (pending) return pending;
+    let refresh: Promise<unknown>;
+    try {
+      refresh = Promise.resolve(this.authService.getBridgeAuth().refreshTokens()).then((tokens) => {
+        const next = (tokens as { accessToken?: unknown } | null | undefined)?.accessToken;
+        if (typeof next === 'string' && next !== this._currentAuthToken && this._started) {
+          this.onTokensChanged(next, this._apiBaseUrl);
+        }
+      });
+    } catch (err) {
+      // BridgeAuth not initialised — nothing to refresh with.
+      refresh = Promise.reject(err);
+    }
+    return trackAuthorizationChange(refresh);
   }
 
   /**
@@ -619,6 +683,7 @@ export class BridgeRuntimeService {
     }
     this._currentAuthToken = undefined;
     this._started = false;
+    clearPendingAuthorizationChange();
   }
 }
 

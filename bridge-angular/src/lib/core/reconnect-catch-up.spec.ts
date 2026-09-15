@@ -103,11 +103,16 @@ const lastWs = () => FakeWebSocket.instances[FakeWebSocket.instances.length - 1]
 class StubAuthService {
   readonly tokens = signal<{ accessToken: string } | null>(null);
   refreshCalls = 0;
+  /** When set, a refresh mints this token (and publishes it, as auth-core does). */
+  mint: (() => string) | null = null;
   getBridgeAuth() {
     return {
       refreshTokens: async () => {
         this.refreshCalls += 1;
-        return null;
+        if (!this.mint) return null;
+        const accessToken = this.mint();
+        this.tokens.set({ accessToken });
+        return { accessToken };
       },
       getPlans: async () => [],
       invalidateFeatureFlagCache: () => {},
@@ -193,7 +198,7 @@ afterEach(async () => {
 });
 
 describe('a reconnect caused by reauthorize() catches up (TBP-660)', () => {
-  it('the plan change published during the swap reaches the stores — one catch-up, no refresh, no loop', async () => {
+  it('the plan change published during the swap reaches the stores — one catch-up, one refresh, no loop', async () => {
     auth.tokens.set({ accessToken: token() });
     await start();
     connectOk(lastWs());
@@ -215,9 +220,33 @@ describe('a reconnect caused by reauthorize() catches up (TBP-660)', () => {
     expect(useBridge().entitlements.can('pro_page')).toBe(true);
     // The route guard hears it once.
     expect(reasons.filter((r) => r === 'reconnect')).toEqual(['reconnect']);
-    // Loop guard intact: no token refresh, no second reauthorize.
-    expect(auth.refreshCalls).toBe(0);
+    // TBP-654 — the recovered plan change starts ONE token refresh, so the
+    // token carrying the new plan is fetched now rather than on the next
+    // user.state_changed. This stub mints nothing, so no second reauthorize.
+    expect(auth.refreshCalls).toBe(1);
     expect(reauthCalls).toBe(1);
+  });
+
+  it('the refresh a recovered plan change starts does not loop through the reconnect it causes (TBP-654)', async () => {
+    auth.tokens.set({ accessToken: token() });
+    await start();
+    connectOk(lastWs());
+    await settle();
+
+    setTokens(token());
+    server = { plan: { slug: 'pro', name: 'Pro' }, status: 'active', entitlements: { pro_page: true } };
+    auth.mint = token; // the refresh returns a new token from here on
+    await settle();
+    connectOk(lastWs()); // catch-up finds Pro → refresh → new token → reauthorize
+    await settle();
+    connectOk(lastWs()); // catch-up again: nothing moved → no refresh
+    await settle();
+    connectOk(lastWs());
+    await settle();
+
+    expect(auth.refreshCalls).toBe(1);
+    expect(reauthCalls).toBe(2);
+    expect(reasons.filter((r) => r === 'reconnect')).toEqual(['reconnect']);
   });
 
   it('nothing missed → two GETs and no authorization change', async () => {
@@ -248,7 +277,10 @@ describe('a genuine reconnect is unchanged, plus the catch-up (TBP-660)', () => 
     connectOk(lastWs());
     await settle();
 
-    expect(auth.refreshCalls).toBe(1);
+    // The reconnect's own refresh, plus the one the recovered plan change
+    // starts (TBP-654). auth-core's refreshTokens() shares one in-flight
+    // request between overlapping calls, so on the wire this is one refresh.
+    expect(auth.refreshCalls).toBe(2);
     expect(catchUpCalls).toHaveLength(2);
     expect(tenantSubscriptionSignal()?.plan.slug).toBe('pro');
   });

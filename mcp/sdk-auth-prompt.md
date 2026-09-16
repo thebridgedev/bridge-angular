@@ -46,6 +46,10 @@ The rest of this guide covers **SDK auth**.
 const bridgeConfig: BridgeConfig = {
   appId: environment.bridgeAppId,
   loginRoute: '/auth/login',
+  // Defaults to production. Required for a stage / local / self-hosted app —
+  // without it a stage app ID hits the production API and signup fails
+  // with "Not Found".
+  apiBaseUrl: environment.bridgeApiBaseUrl || undefined,
 };
 ```
 

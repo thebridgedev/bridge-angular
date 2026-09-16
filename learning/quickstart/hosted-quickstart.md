@@ -21,6 +21,9 @@ import { routes } from './app.routes';
 
 const config: BridgeConfig = {
   appId: import.meta.env.NG_APP_BRIDGE_APP_ID,
+  // Defaults to production. Pass it for a stage/local app, or every call
+  // silently goes to the production API and signup fails with "Not Found".
+  apiBaseUrl: import.meta.env.NG_APP_BRIDGE_API_BASE_URL || undefined,
 };
 
 const routeConfig: RouteGuardConfig = {

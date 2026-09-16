@@ -43,6 +43,8 @@ import { routes } from './app.routes';
 
 const bridgeConfig: BridgeConfig = {
   appId: environment.bridgeAppId,
+  // Defaults to production. Required for a stage / local / self-hosted app.
+  apiBaseUrl: environment.bridgeApiBaseUrl || undefined,
 };
 
 export const appConfig: ApplicationConfig = {

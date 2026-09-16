@@ -110,6 +110,8 @@ export class ShellComponent {}
 // src/app/app.config.ts
 const bridgeConfig: BridgeConfig = {
   appId: environment.bridgeAppId,
+  // Defaults to production. Required for a stage / local / self-hosted app.
+  apiBaseUrl: environment.bridgeApiBaseUrl || undefined,
   billing: {
     paywallRoute: '/welcome',
     paymentErrorRoute: '/payment-error',

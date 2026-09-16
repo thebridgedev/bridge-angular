@@ -91,11 +91,13 @@ const config: BridgeConfig = {
 
 ## Base URLs
 
-Three options point the SDK at Bridge itself. You only change them if you're on a dedicated or self-hosted Bridge environment; on the standard cloud, leave them alone.
+**`apiBaseUrl` is the one to set.** It is the only base URL the SDK actually reads, and every other Bridge URL is derived from it (auth endpoints resolve to `apiBaseUrl + '/auth'`).
 
-- **`apiBaseUrl`** (default `https://api.thebridge.dev`): the base URL for the Bridge API, used by the Feature Flags 2.0 SDK and the realtime runtime (live updates channel).
-- **`authBaseUrl`** (default `https://api.thebridge.dev/auth`): the base URL for Bridge's auth services (token exchange, refresh).
-- **`cloudViewsUrl`** (default `https://api.thebridge.dev/cloud-views`): the base URL for Bridge's cloud-views service, such as plan selection and payments.
+- **`apiBaseUrl`** (default `https://api.thebridge.dev`): the base URL for the Bridge API — auth, feature flags and the realtime runtime (live updates channel) all derive from it.
+
+> **Set this for any non-production app, and set it in `BridgeConfig`.** It defaults to production and the failure is silent: a stage or local app ID pointed at the production API does not exist there, so signup comes back `Not Found` with nothing in the console naming the cause. The SDK reads no environment variables of its own — reading `NG_APP_BRIDGE_API_BASE_URL` (or an `environment.*` value) and passing it as `apiBaseUrl` is your app's job.
+
+> **`authBaseUrl` and `cloudViewsUrl` are not read.** They exist on the `BridgeConfig` type and carry defaults, but nothing in the SDK consumes them — `provideBridge()` forwards only `appId` and `apiBaseUrl` to the auth core, which derives its auth base URL from `apiBaseUrl`. Setting either one has no effect; point a self-hosted or dedicated environment at `apiBaseUrl` instead.
 
 ## Login route
 
@@ -108,9 +110,9 @@ Set `loginRoute` and `bridgeAuthGuard()` sends unauthenticated users to that in-
 | Option | Type | Default | Description |
 |--------|------|---------|--------------|
 | `appId` | `string` | (required) | Your Bridge app ID, found in your app's settings in Control Center |
-| `apiBaseUrl` | `string` | `'https://api.thebridge.dev'` | Base URL for the Bridge API; used by feature flags and the live channel. See [Base URLs](#base-urls) |
-| `authBaseUrl` | `string` | `'https://api.thebridge.dev/auth'` | Base URL for Bridge's auth services. See [Base URLs](#base-urls) |
-| `cloudViewsUrl` | `string` | `'https://api.thebridge.dev/cloud-views'` | Base URL for Bridge's cloud-views service (plan selection, payments). See [Base URLs](#base-urls) |
+| `apiBaseUrl` | `string` | `'https://api.thebridge.dev'` | Base URL for the Bridge API; auth, feature flags and the live channel all derive from it. Set it for any non-production app. See [Base URLs](#base-urls) |
+| `authBaseUrl` | `string` | `'https://api.thebridge.dev/auth'` | **Not read by the SDK** — derived from `apiBaseUrl` instead. See [Base URLs](#base-urls) |
+| `cloudViewsUrl` | `string` | `'https://api.thebridge.dev/cloud-views'` | **Not read by the SDK.** See [Base URLs](#base-urls) |
 | `callbackUrl` | `string` | `${origin}/auth/oauth-callback` | Where the login flow redirects back to after a successful login. See [Callback URL](#callback-url) |
 | `defaultRedirectRoute` | `string` | `'/'` | Route to redirect to after login |
 | `loginRoute` | `string` | (unset) | In-app route of your login page. Set it for SDK mode; leave unset for hosted login. See [Login route](#login-route) |
@@ -197,6 +199,8 @@ See [Route guards](/auth/securing/route-guards/) for a walkthrough.
 ```env
 NG_APP_BRIDGE_APP_ID=your-app-id-here
 NG_APP_BRIDGE_DEFAULT_REDIRECT_ROUTE=/dashboard
+# Only for a non-production app (stage, local, self-hosted):
+# NG_APP_BRIDGE_API_BASE_URL=https://api-stage.thebridge.dev
 ```
 
 </TabItem>
@@ -205,10 +209,13 @@ NG_APP_BRIDGE_DEFAULT_REDIRECT_ROUTE=/dashboard
 ```typescript
 const config: BridgeConfig = {
   appId: import.meta.env.NG_APP_BRIDGE_APP_ID,
+  apiBaseUrl: import.meta.env.NG_APP_BRIDGE_API_BASE_URL || undefined,
   defaultRedirectRoute: import.meta.env.NG_APP_BRIDGE_DEFAULT_REDIRECT_ROUTE ?? '/',
   debug: !environment.production,
 };
 ```
+
+Setting `NG_APP_BRIDGE_API_BASE_URL` in `.env` does nothing on its own — it only takes effect once you pass it as `apiBaseUrl`, as above. Miss that and a stage app ID talks to the production API, where it doesn't exist, and signup fails with `Not Found`.
 
 </TabItem>
 </Tabs>

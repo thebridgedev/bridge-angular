@@ -26,7 +26,11 @@ import { environment } from '../environments/environment';
 import { routes } from './app.routes';
 
 const bridgeConfig: BridgeConfig = {
-  appId: environment.bridgeAppId, // appId is all flags need
+  appId: environment.bridgeAppId,
+  // Flags are evaluated against the Bridge API, so a non-production app needs
+  // this too. It defaults to production: leave it out on a stage app and every
+  // flag silently resolves against production instead.
+  apiBaseUrl: environment.bridgeApiBaseUrl || undefined,
 };
 
 export const appConfig: ApplicationConfig = {

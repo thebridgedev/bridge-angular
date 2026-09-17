@@ -1,9 +1,12 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { en, sv } from '@nebulr-group/bridge-auth-core';
 import { BridgeConfigService } from '../../config/bridge-config.service';
 import { AuthService } from '../../shared/services/auth.service';
+import { TranslatableComponent } from '../../i18n/translator';
 import { TenantSelectorComponent } from './tenant-selector.component';
 import { WorkspaceSelectorComponent } from './workspace-selector.component';
 import { SsoButtonComponent } from './sso-button.component';
@@ -317,5 +320,143 @@ describe('LoginForm → TenantSelector fan-out (TBP-634)', () => {
     const rendered = (fixture.nativeElement.textContent ?? '').replace(/\s+/g, ' ').trim();
     expect(rendered).toContain('Välj kund');
     expect(rendered).not.toContain(sv['tenant.chooseHeading']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The structural half of the same bug.
+//
+// `[messages]` reached MfaChallenge, MfaSetup, TenantSelector and PasskeyLogin
+// and stopped at SsoButton — so an app overriding `sso.continueWith` got its
+// wording everywhere except the "Continue with Google" button sitting on the
+// very same screen. The four that were bound were bound one at a time, and a
+// test naming children one at a time has exactly the blind spot that let the
+// fifth through: the child nobody thought to name is the child nobody bound.
+//
+// So the set under test is DERIVED, not listed. Every `<bridge-*>` element the
+// LoginForm template renders is read out of the template itself, resolved to
+// its component class, and filtered to the classes that extend
+// TranslatableComponent — i.e. the ones that accept `messages` at all. A sixth
+// translatable child added tomorrow joins this test by being added to the
+// template, which is the only place anyone can forget it.
+//
+// The template is a string literal in the component file, so the assertion is
+// made against the source. That is the same convention the rest of this file
+// uses for things the DOM cannot show: a binding that is absent renders
+// nothing, so there is no element to interrogate.
+
+const SDK_AUTH_MODULES = {
+  ...import.meta.glob<Record<string, unknown>>('./*.component.ts', { eager: true }),
+  ...import.meta.glob<Record<string, unknown>>('./shared/*.component.ts', { eager: true }),
+};
+
+/** Every `bridge-*` component in this folder, keyed by its element selector. */
+function componentsBySelector(): Map<string, { name: string; translatable: boolean }> {
+  const out = new Map<string, { name: string; translatable: boolean }>();
+  for (const mod of Object.values(SDK_AUTH_MODULES)) {
+    for (const exported of Object.values(mod)) {
+      if (typeof exported !== 'function') continue;
+      const def = (exported as { ɵcmp?: { selectors?: unknown[][] } }).ɵcmp;
+      const selector = def?.selectors?.[0]?.[0];
+      if (typeof selector !== 'string' || !selector.startsWith('bridge-')) continue;
+      out.set(selector, {
+        name: (exported as { name: string }).name,
+        translatable: (exported as { prototype: unknown }).prototype instanceof TranslatableComponent,
+      });
+    }
+  }
+  return out;
+}
+
+/** The inline template of `login-form.component.ts`, read from source. */
+function loginFormTemplate(): string {
+  // Vitest's `import.meta.url` is a dev-server URL, not a file: one, so the
+  // path is resolved from the vitest root (`bridge-angular/`) instead.
+  const path = resolve(process.cwd(), 'src/lib/components/sdk-auth/login-form.component.ts');
+  if (!existsSync(path)) {
+    throw new Error(`Could not read the LoginForm source at ${path} — has the component moved?`);
+  }
+  const source = readFileSync(path, 'utf8');
+  const start = source.indexOf('template: `');
+  const end = source.indexOf('`,\n})', start);
+  if (start === -1 || end === -1) {
+    throw new Error('Could not locate the LoginForm inline template — has the component moved?');
+  }
+  return source.slice(start + 'template: `'.length, end);
+}
+
+/** Every `<bridge-x …>` opening tag in `template`, in source order. */
+function childOpeningTags(template: string): Array<{ selector: string; tag: string }> {
+  return [...template.matchAll(/<(bridge-[a-z0-9-]+)\b([^>]*)>/g)].map((m) => ({
+    selector: m[1],
+    tag: m[0],
+  }));
+}
+
+describe('LoginForm fans `messages` to every child that takes it (TBP-634)', () => {
+  const known = componentsBySelector();
+  const tags = childOpeningTags(loginFormTemplate());
+  const rendered = [...new Set(tags.map((t) => t.selector))].sort();
+  const translatable = rendered.filter((s) => known.get(s)?.translatable);
+
+  it('derived a sane set to check — the guard against a vacuous pass', () => {
+    // Every assertion below is a loop over a derived list. A regex that stops
+    // matching, a glob that resolves nothing, or a renamed `ɵcmp` would empty
+    // those lists and turn the whole describe green while checking nothing.
+    expect(rendered.length).toBeGreaterThanOrEqual(5);
+    // Two anchors by name: the fan-out that was already right, and the one that
+    // was not.
+    expect(translatable).toContain('bridge-tenant-selector');
+    expect(translatable).toContain('bridge-sso-button');
+    expect(translatable.length).toBeGreaterThanOrEqual(4);
+    // …and every child the template renders must be a component we resolved,
+    // so a new one cannot slip past the filter as "not translatable".
+    expect(rendered.filter((s) => !known.has(s))).toEqual([]);
+  });
+
+  for (const selector of translatable) {
+    it(`binds [messages] on every <${selector}>`, () => {
+      const occurrences = tags.filter((t) => t.selector === selector);
+      expect(occurrences.length).toBeGreaterThan(0);
+      for (const { tag } of occurrences) {
+        expect(tag).toContain('[messages]="messages"');
+      }
+    });
+  }
+
+  it('leaves the children that cannot take `messages` alone', () => {
+    // The complement matters too: binding an input a component does not declare
+    // is an Angular template error, so "bind it everywhere" is not the fix.
+    for (const selector of rendered.filter((s) => !known.get(s)?.translatable)) {
+      for (const { tag } of tags.filter((t) => t.selector === selector)) {
+        expect(tag).not.toContain('[messages]');
+      }
+    }
+  });
+});
+
+describe('LoginForm → SsoButton fan-out, on screen (TBP-634)', () => {
+  it('lets a host override the SSO label from the login form', () => {
+    // The structural test above says the binding exists; this one says it
+    // arrives. SsoButton renders on the ordinary credentials screen, next to
+    // the password field whose copy the same override already reached.
+    mockConfig = { appId: 'x', locale: 'sv' };
+
+    setup();
+    const fixture = TestBed.createComponent(LoginFormComponent);
+    const svc = TestBed.inject(AuthService) as unknown as {
+      authState: ReturnType<typeof signal>;
+    };
+    svc.authState.set('unauthenticated');
+    Object.assign(fixture.componentInstance as Record<string, unknown>, {
+      ssoConnections: [CONNECTION],
+      messages: { 'sso.continueWith': 'Logga in via {provider}' },
+    });
+    fixture.detectChanges();
+
+    const out = (fixture.nativeElement.textContent ?? '').replace(/\s+/g, ' ').trim();
+    expect(out).toContain('Logga in via Google');
+    // Gone, not merely joined by the override.
+    expect(out).not.toContain(sv['sso.continueWith'].split('{')[0].trim());
   });
 });

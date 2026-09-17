@@ -236,6 +236,7 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
               <bridge-sso-button
                 [connection]="conn"
                 [mode]="ssoMode"
+                [messages]="messages"
                 className="bridge-btn bridge-btn-secondary bridge-sso-btn"
                 (success)="login.emit()"
                 (error)="error.emit($event)"

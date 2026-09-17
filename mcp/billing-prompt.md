@@ -6,6 +6,26 @@ You are wiring **billing UI** into an Angular (standalone-components, v19+) appl
 
 > **No `/billing` subpath.** Like the flag API, the whole billing surface is on the **main entry** — import every component and signal helper from `@nebulr-group/bridge-angular` (only `./styles.css` is a separate export).
 
+## Decide first — which billing surface do you need?
+
+Billing is a set of drop-in components, not one page. Pick the ones the requirement actually calls for; each is standalone and imports from the main entry.
+
+| You need | Use | What it does |
+|---|---|---|
+| Let a tenant pick or change a plan | `<bridge-plan-selector>` | Loads plans, applies a free plan directly, launches Stripe Checkout for paid ones |
+| Block the app until a plan is chosen | `<bridge-paywall>` around the routed content, **or** `billing.paywallRoute` in `provideBridge()` | Overlay vs. guard redirect — pick one, not both |
+| Tell the user about a failed payment, ending trial or cancellation | `<bridge-billing-notice>` | Renders nothing while billing is healthy |
+| Show the current plan and status | `<bridge-subscription-status>` | Display only |
+| Warn as a metered limit fills up | `<bridge-quota-banner metric="…">` | Silent below 80% of the cap |
+| Branch your **code** on plan, status or usage | `createSubscriptionSignal()` / `createQuotaSignal(metric)`, or `bridge.tenant.subscription` | Signals — the `create*` pair must be `.destroy()`-ed in `ngOnDestroy` |
+| Gate a feature on what the plan **bought** | `bridge.tenant.entitlements.can(key)` / `.snapshot()` | Fail-closed until the snapshot loads |
+
+**Reach for these before writing plan cards or calling Stripe yourself.** `<bridge-plan-selector>` already covers the free/paid split, the current-plan state, the Checkout redirect and the return through Bridge's `/auth/oauth-callback`; a hand-rolled version has to keep all four correct as plans change, and a wrong Checkout call takes real money.
+
+**Entitlements are not feature flags.** An entitlement says what the tenant *bought* (this guide); a flag says what is *exposed* (`feature-flags-prompt.md`). Gating a paid capability on a flag leaves it switchable for people who never paid.
+
+> **There is no billing-portal component in this package.** `<bridge-plan-selector>` is the manage-plan surface. Its payment-failed state shows a "Manage billing" button that is deliberately unwired — the Stripe customer portal URL is not exposed by the SDK yet, so do not point users at a portal route expecting one.
+
 ## Prerequisites
 
 Verify before starting:

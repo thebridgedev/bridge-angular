@@ -59,7 +59,7 @@ export const appConfig: ApplicationConfig = {
 
 ## Step 3 — Guard routes declaratively
 
-Angular gets a **declarative route guard**, like SvelteKit. Prefer it over hand-rolled checks in components: the rules live in one place and cover auth, flags and billing together.
+Angular gets a **declarative route guard**, like SvelteKit. Prefer it over hand-rolled checks in components: the rules live in one place and cover auth and feature flags together.
 
 ```ts
 // src/app/app.config.ts
@@ -72,8 +72,6 @@ const routeConfig: RouteGuardConfig = {
     { match: '/pricing', public: true },
     // Gate a whole route on a feature flag:
     { match: '/holo-lab', featureFlag: 'holo-experimental', redirectTo: '/' },
-    // Gate on billing:
-    { match: '/reports/*', billing: 'hard' },
   ],
 };
 
@@ -94,7 +92,9 @@ export const routes: Routes = [
 ];
 ```
 
-`RouteRule` supports `match`, `public`, `featureFlag` (a key, or `{ any: [...] }` / `{ all: [...] }`), `redirectTo` and `billing`.
+`RouteRule` supports exactly four fields: `match`, `public`, `featureFlag` (a key, or `{ any: [...] }` / `{ all: [...] }`) and `redirectTo`.
+
+> **There is no per-rule `billing` field.** Billing gating is app-level, not per-route: set `billing.paywallRoute` on `BridgeConfig` and the guard redirects a tenant without an active plan there. To gate one route on what the plan *bought*, check `bridge.tenant.entitlements.can(key)` in the component or a resolver. See `billing-prompt.md`.
 
 > **Gating a whole page? Use a rule, not a component-level `if`.** A rule redirects before the component ever renders; an `if` inside the component means the page mounts, fetches, and only then hides itself — which leaks both the route's existence and whatever the page loaded on the way.
 

@@ -2,6 +2,21 @@
 
 You are adding **Feature Flags** to an Angular application (standalone components, v19+) that uses The Bridge. The goal is to ship code behind a switch you control from the Bridge dashboard — no redeploy needed.
 
+## Decide first — where does the flag decide?
+
+Four surfaces, and they are not interchangeable. Pick per gate, before writing anything — moving a decision from markup up to a route afterwards means rewriting both.
+
+| You are gating | Use | What it is |
+|---|---|---|
+| A whole **route / page** | `featureFlag` on a `RouteGuardConfig` rule, with `bridgeAuthGuard` on the route | Redirects before the component is created |
+| A block of **markup** inside a page | `<bridge-feature-flag>` + `*bridgeFeatureFlagFallback` | Declarative on/off slots, re-rendered on a live toggle |
+| A **value or behaviour** — a limit, which endpoint to call, a `string`/`number`/JSON flag | `bridge.flag(key, default)`, or `flagSignal(key, default)` without injecting | `Signal<FlagEvalResult<T>>` — reactive |
+| A read **outside a component** — a service, a test, an event handler | `bridge.evaluate(key, default)` or `evaluateFlag(key, default)` | One-shot, non-reactive, no injection context needed |
+
+**Gating a whole page? Use a guard rule — not `<bridge-feature-flag>`, and not an `@if`.** Angular ships a declarative route guard for exactly this: a rule redirects before the component ever renders, whereas a check inside the component means the page mounts, fetches, and only then hides itself — leaking both the route's existence and whatever it loaded on the way. This is the one wrong choice here with real blast radius; `integration-prompt.md` has the `RouteGuardConfig` setup.
+
+`FlagRequirement` on a rule is a key, or `{ any: [...] }` / `{ all: [...] }`, with `redirectTo` for where a failing visitor lands.
+
 ## Prerequisites check
 
 Before starting, verify that Bridge is set up in this project:

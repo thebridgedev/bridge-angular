@@ -2,10 +2,14 @@
  * MagicLink — Angular port of bridge-svelte's `sdk-auth/MagicLink.svelte`.
  *
  * Sends a passwordless sign-in link via `getBridgeAuth().sendMagicLink(email)`.
- * Mirrors react's `MagicLink.tsx`: on success shows an expiry confirmation. The
- * actual token consumption happens in `<bridge-login-form>` (magic-link callback).
+ * Mirrors react's `MagicLink.tsx`: on success shows an expiry confirmation.
+ *
+ * It also redeems the emailed token on `ngOnInit` (TBP-682). The link comes back
+ * to the page the request was made from, which for a route that mounts this
+ * component is this component — so it cannot leave redemption to
+ * `<bridge-login-form>`. `useEffect(…, [])` → `ngOnInit`, as in login-form.
  */
-import { Component, EventEmitter, Input, Output, inject, signal } from '@angular/core';
+import { Component, EventEmitter, Input, OnInit, Output, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../shared/services/auth.service';
 import { TranslatableComponent } from '../../i18n/translator';
@@ -73,7 +77,7 @@ import { AuthSpinnerComponent } from './shared/spinner.component';
     </bridge-auth-form-wrapper>
   `,
 })
-export class MagicLinkComponent extends TranslatableComponent {
+export class MagicLinkComponent extends TranslatableComponent implements OnInit {
   @Input() loginHref = '/auth/login';
   @Input() className = '';
   @Input() style = '';
@@ -109,6 +113,38 @@ export class MagicLinkComponent extends TranslatableComponent {
       return this.t(count === 1 ? 'magicLink.expiryMinute' : 'magicLink.expiryMinutes', { count });
     }
     return this.t('magicLink.expirySeconds', { count: seconds });
+  }
+
+  /**
+   * TBP-682: the emailed link returns to the page the request was made from, so
+   * this component must redeem the token as well as send it. Without this branch
+   * a link requested here lands back here and does nothing — the token sits in
+   * the address bar and the user stays signed out. Mirrors login-form's
+   * `ngOnInit`, which has always redeemed.
+   */
+  ngOnInit(): void {
+    if (typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const magicToken = params.get('bridge_magic_link_token');
+    if (!magicToken) return;
+
+    // Drop the token from the URL before redeeming, so a reload or a shared
+    // link cannot replay it.
+    params.delete('bridge_magic_link_token');
+    const newSearch = params.toString();
+    const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '');
+    window.history.replaceState({}, '', newUrl);
+
+    this.loading.set(true);
+    this.errorMsg.set(null);
+    (this.authService.getBridgeAuth() as any)
+      .authenticateWithMagicLinkToken(magicToken)
+      .catch((err: any) => {
+        this.errorMsg.set(authErrorMessage(err, this.translate, 'magicLink.error.auth'));
+        this.error.emit(err);
+      })
+      .finally(() => this.loading.set(false));
   }
 
   async handleSend(): Promise<void> {

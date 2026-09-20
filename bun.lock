@@ -16,7 +16,7 @@
     },
     "bridge-angular": {
       "name": "@nebulr-group/bridge-angular",
-      "version": "0.7.2",
+      "version": "0.7.3",
       "dependencies": {
         "tslib": "^2.3.0",
       },
@@ -28,7 +28,7 @@
         "@angular/forms": "^19.0.0",
         "@angular/platform-browser": "^19.0.0",
         "@angular/router": "^19.0.0",
-        "@nebulr-group/bridge-auth-core": "0.7.0",
+        "@nebulr-group/bridge-auth-core": "0.7.1",
         "ng-packagr": "^19.0.0",
         "typescript": "~5.6.0",
         "zone.js": "~0.15.0",
@@ -39,7 +39,7 @@
         "@angular/forms": "^19.0.0",
         "@angular/platform-browser": "^19.0.0",
         "@angular/router": "^19.0.0",
-        "@nebulr-group/bridge-auth-core": ">=0.7.0-beta.0 <1.0.0",
+        "@nebulr-group/bridge-auth-core": ">=0.7.1 <1.0.0",
       },
     },
     "demo": {
@@ -518,7 +518,7 @@
 
     "@nebulr-group/bridge-angular": ["@nebulr-group/bridge-angular@workspace:bridge-angular"],
 
-    "@nebulr-group/bridge-auth-core": ["@nebulr-group/bridge-auth-core@0.7.0", "", { "dependencies": { "jose": "^6.2.3" } }, "sha512-KRbfNikDw2dndigEMoLpjLoFkVseBjXkA5Ccg+0l5hibEn+XNXYHqs71lQ3UxrVft6OCRBWIdxnVJBrbcf0jYA=="],
+    "@nebulr-group/bridge-auth-core": ["@nebulr-group/bridge-auth-core@0.7.1", "", { "dependencies": { "jose": "^6.2.3" } }, "sha512-WWanmAvEOJGpGWFvZ3WiCRvijVRnJpj+IjfNHJOVp9lhB6iuUELBgCtrf1gY2idewRxX036tuhpSpkMFa24XPA=="],
 
     "@ngtools/webpack": ["@ngtools/webpack@19.2.20", "", { "peerDependencies": { "@angular/compiler-cli": "^19.0.0 || ^19.2.0-next.0", "typescript": ">=5.5 <5.9", "webpack": "^5.54.0" } }, "sha512-nuCjcxLmFrn0s53G67V5R19mUpYjewZBLz6Wrg7BtJkjq08xfO0QgaJg3e6wzEmj1AclH7eMKRnuQhm5otyutg=="],
 

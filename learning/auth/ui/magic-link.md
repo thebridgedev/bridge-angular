@@ -1,6 +1,6 @@
 # Magic link
 
-Standalone magic link request form. When a user clicks a magic link from their email, the token is in the URL and Bridge processes it automatically inside `<bridge-login-form>`.
+Standalone magic link request form. It also redeems the link: the emailed link returns to the page the request was made from, and this component reads the token out of the URL on init.
 
 **Inputs & outputs:**
 
@@ -40,6 +40,6 @@ export class MagicLinkPageComponent {
 }
 ```
 
-When the user clicks the link in their email, they are brought to your app with a `bridge_magic_link_token` query parameter.
+When the user clicks the link in their email, they land back on the route they requested it from — `/auth/magic-link` in the example above — with a `bridge_magic_link_token` query parameter. `<bridge-magic-link>` redeems that token on init, strips it from the URL and signs the user in; `<bridge-login-form>` does the same, so either component works as the landing page. Keep that route reachable to signed-out users.
 
-> **Framework note:** the token is consumed by `<bridge-login-form>` on init, not during app bootstrap, so the link must land on a page that renders `<bridge-login-form>` (your login route).
+> **Framework note:** the token is consumed by the component on init, not during app bootstrap, so the link must land on a route that renders `<bridge-magic-link>` or `<bridge-login-form>`. To point the email at a different page, pass `successUrl` to `sendMagicLink`; the URL must be one of your app's allowed origins. See [Magic link](/auth/sign-in/magic-link/#where-the-link-comes-back) in sign-in methods.

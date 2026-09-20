@@ -229,7 +229,7 @@ Some settings aren't passed in code at all. They're set once per app, and Bridge
 | Setting | What it does |
 |---------|---------------|
 | Redirect URIs | The allowlist of callback URLs Bridge is allowed to redirect to. Any `callbackUrl` you pass to `provideBridge` must already be on this list. |
-| Allowed origins | The CORS allowlist: origins permitted to call the Bridge API directly from the browser. |
+| Allowed origins | The CORS allowlist: origins permitted to call the Bridge API directly from the browser. It also decides where a magic link may be delivered: Bridge refuses to send one whose [return page](/auth/sign-in/magic-link/#where-the-link-comes-back) is on an origin that isn't listed. |
 | Default callback URL | Used whenever your app doesn't pass a `callbackUrl` in code. See [Callback URL](#callback-url). |
 
 - **CLI:**

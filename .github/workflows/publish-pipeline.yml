@@ -21,5 +21,3 @@ jobs:
       install-command: 'npm install'
       build-command: 'npm run build'
       setup-bun: false
-    secrets:
-      docs-sync-key: ${{ secrets.DOCS_SYNC_KEY }}

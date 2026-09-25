@@ -340,7 +340,13 @@ export class TestDataClient {
   }
 }
 
-export function createTestDataClientFromEnv(): TestDataClient {
+/**
+ * @param appDomain - Target a specific app domain instead of `APP_DOMAIN`.
+ *   global-setup uses this to talk to each worker's own app while provisioning
+ *   them — at which point `BRIDGE_TEST_APP_ID` does not exist yet, so
+ *   `getEnvironmentConfig()` cannot be used (TBP-721).
+ */
+export function createTestDataClientFromEnv(appDomain?: string): TestDataClient {
   const projectName = process.env.PLAYWRIGHT_PROJECT_NAME || '';
   let testDataApiUrl: string;
 
@@ -353,7 +359,8 @@ export function createTestDataClientFromEnv(): TestDataClient {
   }
 
   const testDataApiKey = process.env.PLAYWRIGHT_TEST_API_KEY;
-  const appDomain = process.env.APP_DOMAIN || 'BRIDGE_ANGULAR_TEST_DASHBOARD';
+  const resolvedAppDomain =
+    appDomain || process.env.APP_DOMAIN || 'BRIDGE_ANGULAR_TEST_DASHBOARD';
 
   if (!testDataApiKey) {
     throw new Error('PLAYWRIGHT_TEST_API_KEY environment variable is required');
@@ -365,7 +372,7 @@ export function createTestDataClientFromEnv(): TestDataClient {
     testDataApiUrl,
     testDataApiKey,
     appId: process.env.BRIDGE_TEST_APP_ID || '',
-    appDomain,
+    appDomain: resolvedAppDomain,
     isContainer: false,
   });
 }

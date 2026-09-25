@@ -6,27 +6,81 @@ import {
 } from '../config/environments';
 import { type PlaywrightTestAccount, TestDataClient } from '../utils/test-data-client';
 import { LONG_TIMEOUT, MED_TIMEOUT } from './timeouts';
+import {
+  BASELINE_APP_CONFIG,
+  isBaselineConfig,
+  markAppConfigDirty,
+  takeAppConfigDirty,
+  workerAppFor,
+  type WorkerApp,
+} from './worker-app';
 
 export interface AuthFixtures {
   testUser: PlaywrightTestAccount;
   authenticatedPage: Page;
   envConfig: EnvironmentConfig;
   testDataClient: TestDataClient;
+  /** The Bridge app this worker owns — see fixtures/worker-app.ts (TBP-721) */
+  workerApp: WorkerApp;
+  /**
+   * Auto-use guard that puts this worker's app back on {@link BASELINE_APP_CONFIG}
+   * when the previous test in this worker left it off it.
+   */
+  appConfigBaseline: void;
 }
 
 export const test = base.extend<AuthFixtures>({
-  envConfig: async ({}, use) => {
-    const env = getCurrentEnvironment();
-    const config = getEnvironmentConfig(env);
-    await use(config);
+  // The Bridge app provisioned for this worker by global-setup.
+  workerApp: async ({}, use, testInfo) => {
+    await use(workerAppFor(testInfo.parallelIndex));
   },
 
+  // Every browser context in this worker boots the demo with THIS worker's app
+  // id (seeded as localStorage `bridge:appId`), which is what stops one worker's
+  // app-level writes from being visible to another. Overrides the config-level
+  // `use.storageState`.
+  storageState: async ({ workerApp }, use) => {
+    await use(workerApp.storageStatePath);
+  },
+
+  // Environment configuration, narrowed to this worker's app.
+  envConfig: async ({ workerApp }, use) => {
+    const env = getCurrentEnvironment();
+    const config = getEnvironmentConfig(env);
+    await use({ ...config, appId: workerApp.appId, appDomain: workerApp.appDomain });
+  },
+
+  // Test data client for API operations. `configureApp` is wrapped so the
+  // baseline guard below knows whether anything actually needs undoing.
   testDataClient: async ({ envConfig }, use) => {
     const client = new TestDataClient(envConfig);
+    const configureApp = client.configureApp.bind(client);
+    client.configureApp = async (config) => {
+      if (!isBaselineConfig(config)) markAppConfigDirty();
+      return configureApp(config);
+    };
     await use(client);
   },
 
-  testUser: async ({ testDataClient }, use) => {
+  // Restore the app-level baseline when — and only when — a previous test in
+  // this worker moved off it and died before its own `finally` put it back.
+  // Safe because the app is this worker's alone and tests within a worker run
+  // serially; cheap because it fires only after a spec that changed something.
+  appConfigBaseline: [
+    async ({ testDataClient }, use) => {
+      if (takeAppConfigDirty()) {
+        await testDataClient.configureApp({ ...BASELINE_APP_CONFIG }).catch(() => {});
+      }
+      await use();
+    },
+    { auto: true },
+  ],
+
+  testUser: async ({ testDataClient, appConfigBaseline }, use) => {
+    // Depended on, not used: orders the baseline reset before the account is
+    // created, so the tenant is onboarded against the baseline app config.
+    void appConfigBaseline;
+
     const account = await testDataClient.createTestAccount();
     console.log(`[fixture] Created test account: ${account.email}`);
 

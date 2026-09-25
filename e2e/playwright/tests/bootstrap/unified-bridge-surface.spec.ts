@@ -14,7 +14,7 @@
  * svelte source spec's deferral note + plugin E2E env gaps TBP-405/406).
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/auth';
 import { MED_TIMEOUT } from '../../fixtures/timeouts';
 
 test.describe('Unified bridge surface — session.snapshot end-to-end', () => {

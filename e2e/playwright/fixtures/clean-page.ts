@@ -1,13 +1,15 @@
-import * as path from 'path';
 import { type Browser, type BrowserContext, type Page } from '@playwright/test';
-
-// Written by global-setup: the demo origin's `bridge:appId` and nothing else —
-// no auth tokens. Without it a fresh context boots the demo with no app id at
-// all, since the id is no longer baked into the environment file (TBP-721).
-const BASE_STATE_PATH = path.resolve(__dirname, '../.auth/base-state.json');
+import { currentWorkerApp } from './worker-app';
 
 /**
  * Creates a fresh browser context with no auth state but with the E2E app ID.
+ *
+ * The app id is this WORKER's app (written by global-setup as that worker's
+ * storage state), not a suite-wide one: a context built here has to boot the
+ * demo against the same app the rest of the worker's test is talking to, or
+ * the test would read one app's settings while the fixtures wrote another's.
+ * Without any seeded state the demo would boot with no app id at all, since
+ * the id is not baked into the environment file (TBP-721).
  */
 export async function createCleanContext(browser: Browser): Promise<{
   context: BrowserContext;
@@ -15,7 +17,7 @@ export async function createCleanContext(browser: Browser): Promise<{
   cleanup: () => Promise<void>;
 }> {
   const context = await browser.newContext({
-    storageState: BASE_STATE_PATH,
+    storageState: currentWorkerApp().storageStatePath,
   });
 
   const page = await context.newPage();

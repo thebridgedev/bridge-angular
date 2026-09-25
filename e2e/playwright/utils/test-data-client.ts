@@ -398,6 +398,7 @@ export function createTestDataClientFromEnv(appDomain?: string): TestDataClient 
   return new TestDataClient({
     name: 'local',
     baseUrl: '',
+    apiBaseUrl: testDataApiUrl,
     testDataApiUrl,
     testDataApiKey,
     appId: process.env.BRIDGE_TEST_APP_ID || '',

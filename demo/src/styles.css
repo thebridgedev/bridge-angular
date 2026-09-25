@@ -236,6 +236,20 @@ body {
   text-decoration: none;
 }
 
+.env-pill {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.env-pill[data-env='prod'] {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .nav-links {
   display: flex;
   align-items: center;

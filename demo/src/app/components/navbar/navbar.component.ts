@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { AuthService, LoginComponent } from '@nebulr-group/bridge-angular';
+import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-navbar',
@@ -10,6 +11,9 @@ import { AuthService, LoginComponent } from '@nebulr-group/bridge-angular';
     <nav class="nav-menu">
       <div class="nav-container">
         <a routerLink="/" class="nav-brand">Bridge Demo</a>
+        <!-- Which environment file this demo was built with. global-setup
+             asserts it against the Playwright project (TBP-721). -->
+        <span class="env-pill" [attr.data-env]="env">{{ env }}</span>
 
         @if (isAuthenticated()) {
           <div class="nav-links">
@@ -34,6 +38,7 @@ import { AuthService, LoginComponent } from '@nebulr-group/bridge-angular';
 })
 export class NavbarComponent {
   protected readonly isAuthenticated = this.authService.isAuthenticated;
+  protected readonly env = environment.name;
 
   constructor(private authService: AuthService) {}
 

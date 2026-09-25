@@ -27,7 +27,9 @@ function resolveAppId(): string {
 
 const bridgeConfig: BridgeConfig = {
   appId: resolveAppId(),
-  callbackUrl: environment.bridgeCallbackUrl,
+  // Unset in the test environments: the SDK then derives
+  // `<origin>/auth/oauth-callback`, right for whichever port the demo serves on.
+  ...(environment.bridgeCallbackUrl ? { callbackUrl: environment.bridgeCallbackUrl } : {}),
   debug: environment.bridgeDebug,
   // Paywall: bounce an authenticated no-plan tenant to /welcome before a
   // protected page renders (matches bridge-svelte's demo +layout.ts).

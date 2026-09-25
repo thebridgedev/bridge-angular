@@ -94,8 +94,15 @@ export const test = base.extend<AuthFixtures>({
     }
   },
 
-  authenticatedPage: async ({ page, testUser, envConfig }, use) => {
-    await loginViaBridgeAuth(page, testUser.email, testUser.password, envConfig);
+  // Logs in through the in-app SDK login (/auth/login), as bridge-svelte's
+  // fixture always has. It used to go through the hosted portal, and
+  // bridge-angular gives no way to point hosted login anywhere but the
+  // production portal (BridgeConfig has no `hostedUrl`), so on stage every
+  // authenticated spec died on a production login page that does not know the
+  // stage app (TBP-721). The hosted flow keeps its own coverage in
+  // auth/login-logout.spec.ts via `loginViaBridgeAuth`.
+  authenticatedPage: async ({ page, testUser }, use) => {
+    await loginViaSdkAuth(page, testUser.email, testUser.password);
     await use(page);
   },
 });
@@ -256,8 +263,12 @@ export async function loginViaSdkAuth(
     { timeout: LONG_TIMEOUT },
   );
 
-  await page.waitForURL('**/protected', { timeout: MED_TIMEOUT }).catch(() => {
-    /* may not redirect to /protected in all configurations */
+  // The login form navigates wherever the page wires it to (the demo: '/'), so
+  // wait for the authenticated nav rather than a URL. This used to wait for
+  // /protected — a route the demo never lands on — and swallowed the timeout,
+  // costing every login a flat MED_TIMEOUT.
+  await expect(page.locator('button:has-text("Logout")')).toBeVisible({
+    timeout: LONG_TIMEOUT,
   });
 
   console.log(`[sdk-login] SDK login complete for ${email}. Current URL: ${page.url()}`);

@@ -10,15 +10,24 @@
  *   4. `bridge.tenant.entitlements.can(...)` answers synchronously.
  *   5. `bridge.app.plans` is lazy (null) before .load(); resolves after.
  *
- * NOT YET RUN — full milestone-end E2E pass is environment-deferred (matches the
- * svelte source spec's deferral note + plugin E2E env gaps TBP-405/406).
+ * Every assertion here reads a slice of the AUTHENTICATED session snapshot —
+ * `bridge.tenant`, `bridge.user`, the entitlement map, and `bridge.app.plans`
+ * (whose `load()` calls `BridgeAuth.getPlans`, which throws `Not authenticated`
+ * without a session). So each test takes `authenticatedPage`, not `page`.
+ *
+ * TBP-721: the file was ported with the plain `page` fixture and marked
+ * "NOT YET RUN". The stage suite then ran it on an anonymous page — the
+ * snapshot wait timing out, `app_active` false, `getPlans` throwing
+ * `Not authenticated` — exactly what bridge-svelte hit and fixed in TBP-607.
  */
 
 import { test, expect } from '../../fixtures/auth';
 import { MED_TIMEOUT } from '../../fixtures/timeouts';
 
 test.describe('Unified bridge surface — session.snapshot end-to-end', () => {
-  test('snapshot lands and populates bridge.tenant + bridge.user', async ({ page }) => {
+  test('snapshot lands and populates bridge.tenant + bridge.user', async ({
+    authenticatedPage: page,
+  }) => {
     await page.goto('/');
 
     // The Angular demo exposes `window.bridge` (AppComponent) with signal slices
@@ -56,7 +65,9 @@ test.describe('Unified bridge surface — session.snapshot end-to-end', () => {
     expect(value.user.tenantId).toBe(value.tenantId);
   });
 
-  test('entitlements.can() answers from the snapshot map', async ({ page }) => {
+  test('entitlements.can() answers from the snapshot map', async ({
+    authenticatedPage: page,
+  }) => {
     await page.goto('/');
 
     const canApp = await page.waitForFunction(
@@ -72,7 +83,9 @@ test.describe('Unified bridge surface — session.snapshot end-to-end', () => {
     expect(value).toEqual({ app_active: true });
   });
 
-  test('bridge.app.plans is lazy — null until .load(), populated after', async ({ page }) => {
+  test('bridge.app.plans is lazy — null until .load(), populated after', async ({
+    authenticatedPage: page,
+  }) => {
     await page.goto('/');
 
     // What the first evaluate needs is `window.bridge`, so wait for that — the

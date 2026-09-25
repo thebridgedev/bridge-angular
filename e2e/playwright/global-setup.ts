@@ -35,7 +35,7 @@
 import { chromium, type FullConfig } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
-import { demoBaseUrl } from './config/environments';
+import { demoBaseUrl, getCurrentEnvironment } from './config/environments';
 import { PAYWALL_PLAN, TEAM_PLAN } from './fixtures/plans';
 import {
   BASELINE_APP_CONFIG,
@@ -272,6 +272,30 @@ async function globalSetup(config: FullConfig) {
       );
     }
     console.log(`[global-setup] Demo initialized with app id ${primary.appId}`);
+
+    // The demo has to be serving the SAME environment this run targets. It is
+    // not guaranteed to: `reuseExistingServer` reuses whatever already answers
+    // on the harness port, whichever `--configuration` it was started with. The
+    // suite would then drive the browser at one backend while provisioning apps
+    // on another. The app-id check above cannot catch that — the id is seeded
+    // through localStorage and is "right" either way (TBP-721, port of
+    // bridge-svelte TBP-607).
+    const expectedEnv = getCurrentEnvironment();
+    const shownEnv = await page
+      .locator('.env-pill')
+      .first()
+      .getAttribute('data-env')
+      .catch(() => null);
+    if (shownEnv !== expectedEnv) {
+      throw new Error(
+        `The demo at ${baseURL} is serving the "${shownEnv ?? 'unknown'}" environment, ` +
+          `but this run targets "${expectedEnv}".\n` +
+          `The demo picks its environment from \`ng serve --configuration=test-${expectedEnv}\` ` +
+          `(which swaps in ${envFile}). Stop whatever is serving ${baseURL} and re-run, ` +
+          `or point HARNESS_PORT at a free port.`,
+      );
+    }
+    console.log(`[global-setup] Demo is serving the "${shownEnv}" environment`);
 
     // `base-state.json` is the config-level default (playwright.config.ts
     // `use.storageState`), used by anything that has not opted into the

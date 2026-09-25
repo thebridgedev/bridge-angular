@@ -4,6 +4,12 @@
 
 export interface EnvironmentConfig {
   baseUrl: string;
+  /**
+   * The Bridge API base the demo's SDK talks to for this project — the URL
+   * specs must route/mock/probe against. Specs used to read it off this object
+   * while it did not exist, so `page.route(\`${undefined}/…\`)` never matched.
+   */
+  apiBaseUrl: string;
   authBaseUrl?: string;
   cloudViewsUrl?: string;
   testDataApiUrl: string;
@@ -93,6 +99,7 @@ export function getEnvironmentConfig(environment: 'local' | 'stage' | 'prod'): E
       return {
         name: 'local',
         baseUrl,
+        apiBaseUrl: process.env.LOCAL_API_BASE_URL || 'http://localhost:3200',
         authBaseUrl,
         cloudViewsUrl,
         testDataApiUrl,
@@ -107,6 +114,7 @@ export function getEnvironmentConfig(environment: 'local' | 'stage' | 'prod'): E
       return {
         name: 'stage',
         baseUrl,
+        apiBaseUrl: process.env.STAGE_API_BASE_URL || DEFAULT_STAGE_API_BASE_URL,
         authBaseUrl: process.env.STAGE_AUTH_BASE_URL || `${DEFAULT_STAGE_API_BASE_URL}/auth`,
         cloudViewsUrl:
           process.env.STAGE_CLOUD_VIEWS_URL || `${DEFAULT_STAGE_API_BASE_URL}/cloud-views`,
@@ -121,6 +129,7 @@ export function getEnvironmentConfig(environment: 'local' | 'stage' | 'prod'): E
       return {
         name: 'prod',
         baseUrl,
+        apiBaseUrl: DEFAULT_PROD_API_BASE_URL,
         testDataApiUrl: process.env.PROD_TEST_DATA_API_URL || DEFAULT_PROD_API_BASE_URL,
         testDataApiKey,
         appId,

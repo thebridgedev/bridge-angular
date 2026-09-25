@@ -8,7 +8,6 @@ test.describe('Feature Flags', () => {
     const page = authenticatedPage;
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
     await expect(page.locator('h2:has-text("Feature Flag Examples")')).toBeVisible({
       timeout: MED_TIMEOUT,
@@ -21,7 +20,6 @@ test.describe('Feature Flags', () => {
     const page = authenticatedPage;
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
     const cachedSection = page.locator('.feature-example:has-text("Cached Feature Flag")');
     await expect(cachedSection).toBeVisible({ timeout: MED_TIMEOUT });
@@ -34,7 +32,6 @@ test.describe('Feature Flags', () => {
     const page = authenticatedPage;
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
     const liveSection = page.locator('.feature-example:has-text("Live Feature Flag")');
     await expect(liveSection).toBeVisible({ timeout: MED_TIMEOUT });
@@ -57,7 +54,12 @@ test.describe('Feature Flags', () => {
     });
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+
+    // Wait for the page the flags render on to have booted — not for the network
+    // to go idle, which the realtime WebSocket never allows.
+    await expect(page.locator('h2:has-text("Feature Flag Examples")')).toBeVisible({
+      timeout: MED_TIMEOUT,
+    });
 
     expect(flagApiCalls.length).toBeGreaterThanOrEqual(0);
   });
@@ -68,13 +70,18 @@ test.describe('Feature Flags', () => {
     const page = authenticatedPage;
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
     const cachedSection = page.locator('.feature-example:has-text("Cached Feature Flag")');
     const activeMsg = cachedSection.locator('.feature-status.active');
     const inactiveMsg = cachedSection.locator(
       '.feature-status:has-text("Create a feature flag")',
     );
+
+    // Wait for the flag to have rendered one of its two branches before reading
+    // which one — the one-shot isVisible() reads below would otherwise sample the
+    // page before the flag evaluated. (This used to wait for network idle, which
+    // the realtime WebSocket never lets happen.)
+    await expect(activeMsg.or(inactiveMsg).first()).toBeVisible({ timeout: MED_TIMEOUT });
 
     const isActive = await activeMsg.isVisible().catch(() => false);
     const isInactive = await inactiveMsg.isVisible().catch(() => false);

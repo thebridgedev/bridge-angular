@@ -6,6 +6,7 @@
  */
 
 import { test, expect } from '../../fixtures/auth';
+import { createCleanContext } from '../../fixtures/clean-page';
 import { LONG_TIMEOUT, MED_TIMEOUT } from '../../fixtures/timeouts';
 
 test.describe('Subscription Plans', () => {
@@ -13,7 +14,6 @@ test.describe('Subscription Plans', () => {
     const page = authenticatedPage;
 
     await page.goto('/subscription');
-    await page.waitForLoadState('networkidle');
 
     // Wait for plan selector to stop loading
     const planSelector = page.locator('[data-bridge-plan-selector]');
@@ -36,7 +36,6 @@ test.describe('Subscription Plans', () => {
     const page = authenticatedPage;
 
     await page.goto('/subscription');
-    await page.waitForLoadState('networkidle');
 
     const planSelector = page.locator('[data-bridge-plan-selector]');
     await expect(planSelector).toBeVisible({ timeout: MED_TIMEOUT });
@@ -78,7 +77,6 @@ test.describe('Subscription Plans', () => {
     });
 
     await page.goto('/subscription');
-    await page.waitForLoadState('networkidle');
 
     const planSelector = page.locator('[data-bridge-plan-selector]');
     await expect(planSelector).not.toHaveAttribute('data-loading', 'true', { timeout: LONG_TIMEOUT });
@@ -94,7 +92,6 @@ test.describe('Subscription Plans', () => {
   });
 
   test('/subscription is not accessible without authentication', async ({ browser }) => {
-    const { createCleanContext } = await import('../../fixtures/clean-page');
     const { page, cleanup } = await createCleanContext(browser);
 
     try {

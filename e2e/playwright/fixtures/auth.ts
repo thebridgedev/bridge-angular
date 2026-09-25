@@ -57,7 +57,6 @@ export async function loginViaBridgeAuth(
   console.log(`[login] Starting login for ${email}`);
 
   await page.goto('/');
-  await page.waitForLoadState('networkidle');
   console.log(`[login] On home page: ${page.url()}`);
 
   const loginButton = page.locator('button:has-text("Login with Bridge")');
@@ -114,7 +113,11 @@ export async function loginViaBridgeAuth(
     // May still be processing
   }
 
-  await page.waitForLoadState('networkidle');
+  // The next branch reads page.url(), so the document that redirect landed on
+  // has to be parsed first. domcontentloaded says exactly that and always
+  // fires; network idle never would, because the demo holds a live realtime
+  // WebSocket once the SDK has booted (TBP-721, port of svelte TBP-605).
+  await page.waitForLoadState('domcontentloaded');
 
   const currentUrl = page.url();
   if (
@@ -170,7 +173,6 @@ export async function loginViaSdkAuth(
   console.log(`[sdk-login] Starting SDK login for ${email}`);
 
   await page.goto('/auth/login');
-  await page.waitForLoadState('networkidle');
 
   const emailInput = page.locator('#login-email');
   await emailInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
@@ -285,7 +287,11 @@ async function waitForOAuthFlowCompletion(page: Page): Promise<void> {
       // Timeout — check state
     }
 
-    await page.waitForLoadState('networkidle');
+    // The loop's next pass reads page.url() to decide whether we are still on a
+    // transit page, so the landed document must be parsed. domcontentloaded
+    // states that and terminates; network idle cannot while the realtime
+    // WebSocket is open.
+    await page.waitForLoadState('domcontentloaded');
     redirectCount++;
   }
 

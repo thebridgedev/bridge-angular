@@ -25,7 +25,7 @@ import { BridgeRuntimeService } from './bridge-runtime.service';
 import { BridgeService } from './bridge.service';
 import { BridgeConfigService } from '../config/bridge-config.service';
 import { AuthService } from '../shared/services/auth.service';
-import { __resetSnapshotStores } from './snapshot-stores';
+import { __resetSnapshotStores, applySubscriptionPlanChanged } from './snapshot-stores';
 import { AUTHORIZATION_CHANGE_WAIT_MS } from './pending-authorization-change';
 import { __resetBridgeRouteGuardState, bridgeAuthGuard, type RouteGuardConfig } from '../guards/route-guard';
 
@@ -223,8 +223,11 @@ describe('a plan change makes route decisions wait for the refreshed token (TBP-
       String(url).includes('/billing/state')
         ? { ok: true, json: async () => ({ plan: { slug: 'pro', name: 'Pro' }, status: 'active' }) }
         : { ok: false, json: async () => ({}) }) as unknown as typeof fetch;
+    // The page already showed Free — recovering Pro over an EMPTY store would be
+    // hydration, which reports nothing (TBP-686).
+    applySubscriptionPlanChanged({ to: { slug: 'free', name: 'Free' }, status: 'active' });
     startSignedIn(FREE, fetchImpl);
-    await (runtime as unknown as { catchUpAfterReconnect(): Promise<void> }).catchUpAfterReconnect();
+    await (runtime as unknown as { catchUpAfterOpen(firstConnect: boolean): Promise<void> }).catchUpAfterOpen(false);
     expect(auth.refreshCalls).toBe(1);
     const decision = track(navigate('/pro'));
     await vi.advanceTimersByTimeAsync(300);

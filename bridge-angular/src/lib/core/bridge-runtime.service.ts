@@ -45,6 +45,7 @@ import {
 } from '@angular/core';
 import {
   RealtimeClient,
+  type QuotaSnapshot,
   type RealtimeClientConfig,
   type RealtimeStatus,
   type SessionSnapshotMessage,
@@ -56,11 +57,13 @@ import { BridgeConfigService } from '../config/bridge-config.service';
 import { AuthService } from '../shared/services/auth.service';
 import { logger } from '../shared/logger';
 import {
+  applyCatchUpSnapshot,
   applyEntitlementsChanged,
   applySessionSnapshot,
   applySubscriptionPlanChanged,
   tenantEntitlementsSignal,
   tenantSubscriptionSignal,
+  type SessionSnapshotData,
 } from './snapshot-stores';
 import { bridgeEvents } from './events';
 import { _setRealtimeStatus, _setRealtimeStatusDetail } from './realtime-status';
@@ -73,6 +76,11 @@ import {
 } from './pending-authorization-change';
 
 const DEFAULT_API_BASE_URL = 'https://api.thebridge.dev';
+
+/** `GET /usage/quota/:metric`; `policy` is optional because an older bridge-api omits it. */
+type QuotaCatchUpBody =
+  | (Omit<QuotaSnapshot, 'percent_used' | 'policy' | 'label'> & { policy?: 'hard' | 'metered' })
+  | null;
 
 /**
  * Why a route verdict may have changed without a flag changing (TBP-654): a
@@ -96,7 +104,7 @@ export interface StartBridgeRuntimeOptions {
     Omit<RealtimeClientConfig, 'apiBaseUrl' | 'apiKey' | 'appId' | 'getAuthToken'>
   >;
   /**
-   * HTTP used by the post-reconnect catch-up (TBP-660). Defaults to the global
+   * HTTP used by the on-open catch-up (TBP-660, TBP-686). Defaults to the global
    * `fetch`; tests pass a stub.
    */
   fetch?: typeof fetch;
@@ -112,7 +120,7 @@ export class BridgeRuntimeService {
   // setOnOpen knows the token is already fresh and skips its proactive refresh.
   private _reauthInFlight = false;
   private _prevAuthToken: string | undefined;
-  // TBP-660 — HTTP for the post-reconnect catch-up, and a sequence number so a
+  // TBP-660 / TBP-686 — HTTP for the on-open catch-up, and a sequence number so a
   // slow catch-up that a newer reconnect superseded cannot write old state back.
   private _fetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
   private _catchUpSeq = 0;
@@ -215,7 +223,19 @@ export class BridgeRuntimeService {
       // so a live plan change was lost in ~1 of 8 stage runs. Re-read billing
       // state after every reconnect, reauthorize-caused or not. Loop-safe: the
       // catch-up only GETs state and never touches the token.
-      if (this._connectedOnce) void this.catchUpAfterReconnect();
+      //
+      // TBP-686 — and on the FIRST connect too. It used to be gated on
+      // `_connectedOnce`, but the first connect is exactly where the
+      // session.snapshot goes missing: the server publishes it fire-and-forget
+      // during authorize, before the subscription is live, so it loses the race
+      // and nothing replays it — tenant id, name and branding stayed null for
+      // the whole session. The TOKEN refresh above stays gated; only the state
+      // catch-up runs here, and it returns early when signed out.
+      const firstConnect = !this._connectedOnce;
+      this.catchUpAfterOpen(firstConnect).catch(() => {
+        /* both halves are best-effort already; this keeps anything that slips
+           through from surfacing as an unhandled rejection in the app */
+      });
       this._connectedOnce = true;
       for (const fn of this._onOpenSubs) {
         try {
@@ -449,14 +469,21 @@ export class BridgeRuntimeService {
   }
 
   /**
-   * TBP-660 — one catch-up per reconnect: `GET /billing/state` and
-   * `GET /entitlements`, applied to auth-core's billing stores and to
-   * `bridge.tenant.subscription` / `bridge.tenant.entitlements`. Reports an
-   * authorization change only when something actually moved, so a routine
-   * reconnect costs two GETs and nothing else. Signed-out sessions have no
-   * workspace state to repair. Never throws.
+   * TBP-660 / TBP-686 — one catch-up per open (the first connect included):
+   * `GET /session/init`, `GET /billing/state` and `GET /entitlements`, applied
+   * to auth-core's billing stores and to the `bridge.tenant.*` / `bridge.app.*`
+   * / `bridge.user` signals, plus a re-read of every quota metric the app has
+   * already hydrated. Reports an authorization change only when the plan or the
+   * entitlements actually moved, so a routine open costs a few GETs and nothing
+   * else. Signed-out sessions have no workspace state to repair. Never throws.
+   *
+   * Storm safety: every open supersedes the catch-up before it (`_catchUpSeq`),
+   * so an open storm ends with the answer fetched after the newest socket went
+   * live. The requests go through `this._fetch`, never through a
+   * token-refreshing path, so they cannot feed the token → reauthorize → open
+   * loop described in setOnOpen.
    */
-  private async catchUpAfterReconnect(): Promise<void> {
+  private async catchUpAfterOpen(firstConnect: boolean): Promise<void> {
     const accessToken = this._currentAuthToken;
     if (!accessToken) return;
     const seq = ++this._catchUpSeq;
@@ -470,15 +497,60 @@ export class BridgeRuntimeService {
     } catch {
       return;
     }
+    await Promise.all([
+      this.catchUpSessionState(seq, accessToken, base, appId, firstConnect),
+      this.catchUpQuotaSnapshots(seq, accessToken, base, appId),
+    ]);
+  }
+
+  /** A newer catch-up, a different session or a stopped runtime owns the stores now. */
+  private catchUpSuperseded(seq: number, accessToken: string): boolean {
+    return seq !== this._catchUpSeq || accessToken !== this._currentAuthToken;
+  }
+
+  private async catchUpSessionState(
+    seq: number,
+    accessToken: string,
+    base: string,
+    appId: string,
+    firstConnect: boolean,
+  ): Promise<void> {
     const auth = { Authorization: `Bearer ${accessToken}` };
-    const [billing, entitlementsBody] = await Promise.all([
+    const [session, billing, entitlementsBody] = await Promise.all([
+      this.getJson(`${base}/session/init`, { ...auth, 'x-app-id': appId }),
       this.getJson(`${base}/billing/state`, { ...auth, 'x-app-id': appId }),
       this.getJson(`${base}/entitlements`, auth),
     ]);
-    // A newer reconnect or a different session owns the stores now.
-    if (seq !== this._catchUpSeq || accessToken !== this._currentAuthToken) return;
+    if (this.catchUpSuperseded(seq, accessToken)) return;
 
-    let changed = false;
+    let planChanged = false;
+    let entitlementsChanged = false;
+
+    // TBP-686 — the session snapshot the push may have lost: tenant id and
+    // name, app branding and user, plus plan and entitlements. Throughout this
+    // method a slice that was empty before is hydration, not a change: the
+    // delivered push never reports one, and this must not do more than the
+    // push it replaces (no route re-check, no token refresh on a first load).
+    if (session && typeof session === 'object') {
+      try {
+        const data = session as SessionSnapshotData;
+        const moved = applyCatchUpSnapshot(data);
+        planChanged ||= moved.planChanged;
+        entitlementsChanged ||= moved.entitlementsChanged;
+        const map = data.tenant?.entitlements;
+        if (map && typeof map === 'object' && !Array.isArray(map)) {
+          // Keep auth-core's copy (what flag targeting reads) in step too —
+          // hydration included, so it is written unconditionally.
+          try {
+            useBridge().entitlementsStore.applyEntitlementsChanged(map);
+          } catch {
+            /* auth-core store unavailable — the tenant signal already moved */
+          }
+        }
+      } catch {
+        /* defensive — a malformed answer must not skip the halves below */
+      }
+    }
 
     const state = billing as { plan?: { slug?: unknown; name?: unknown }; status?: unknown } | null;
     if (state && typeof state.plan?.slug === 'string') {
@@ -490,11 +562,14 @@ export class BridgeRuntimeService {
       }
       applySubscriptionPlanChanged({ to: state.plan, status: state.status });
       const after = tenantSubscriptionSignal();
-      if (before?.plan?.slug !== after?.plan?.slug || before?.status !== after?.status) changed = true;
+      if (before != null && (before.plan?.slug !== after?.plan?.slug || before.status !== after?.status)) {
+        planChanged = true;
+      }
     }
 
     const map = (entitlementsBody as { entitlements?: unknown } | null)?.entitlements;
     if (map && typeof map === 'object' && !Array.isArray(map)) {
+      const empty = tenantEntitlementsSignal() == null;
       const before = JSON.stringify(tenantEntitlementsSignal());
       try {
         useBridge().entitlementsStore.applyEntitlementsChanged(map as Record<string, boolean>);
@@ -502,19 +577,74 @@ export class BridgeRuntimeService {
         /* auth-core store unavailable — the tenant signal below still moves */
       }
       applyEntitlementsChanged({ entitlements: map });
-      if (before !== JSON.stringify(tenantEntitlementsSignal())) changed = true;
+      if (!empty && before !== JSON.stringify(tenantEntitlementsSignal())) entitlementsChanged = true;
     }
 
-    if (changed) this.authorizationChanged('reconnect');
+    if (!planChanged && !entitlementsChanged) return;
+    // A reconnect keeps the TBP-660 reason. A first connect is not a
+    // reconnect: name the change the lost push would have reported, as
+    // bridge-svelte does for every catch-up (TBP-686).
+    if (!firstConnect) this.authorizationChanged('reconnect');
+    else if (planChanged) this.authorizationChanged('subscription.plan_changed');
+    else this.authorizationChanged('entitlements.changed');
   }
 
+  // `GET /usage/quota/:metric` — the body auth-core's own lazy hydrate reads,
+  // and the shape `applyInitialSnapshot` takes.
+  private async catchUpQuotaSnapshots(
+    seq: number,
+    accessToken: string,
+    base: string,
+    appId: string,
+  ): Promise<void> {
+    // TBP-686 — the one live payload the session snapshot does not carry:
+    // `quota.updated`. auth-core's QuotaStore hydrates a metric once (lazy
+    // GET on first read) and then only moves on live pushes — it never
+    // re-reads — so a push lost across a socket swap (every token refresh
+    // reauthorizes and swaps it) froze `used` for the rest of the session.
+    // Only metrics already hydrated are re-read: a page that never asked about
+    // a metric has nothing stale, and an app without quotas pays nothing.
+    let quotas: ReturnType<typeof useBridge>['quotas'];
+    let metrics: string[];
+    try {
+      quotas = useBridge().quotas;
+      metrics = [...quotas.getAll().keys()];
+    } catch {
+      return; // no quota surface — nothing to repair
+    }
+    if (metrics.length === 0) return;
+
+    const headers = { Authorization: `Bearer ${accessToken}`, 'x-app-id': appId };
+    await Promise.all(
+      metrics.map(async (metric) => {
+        // The value this repair replaces. A push that lands while the GET is
+        // in flight is NEWER than the answer and must win.
+        const before = quotas.getAll().get(metric);
+        try {
+          const body = await this.getJson(`${base}/usage/quota/${encodeURIComponent(metric)}`, headers);
+          if (body === undefined) return; // failed — keep what we have
+          if (this.catchUpSuperseded(seq, accessToken)) return;
+          if (quotas.getAll().get(metric) !== before) return; // a push won the race
+          // `null` is a real answer ("no quota configured") and drops the entry.
+          quotas.applyInitialSnapshot(metric, (body ?? null) as QuotaCatchUpBody);
+        } catch {
+          /* best-effort, per metric: one failure must not skip the others */
+        }
+      }),
+    );
+  }
+
+  /**
+   * The parsed body, or `undefined` when the request failed. A JSON `null`
+   * body stays `null`: for a quota metric that is a real answer.
+   */
   private async getJson(url: string, headers: Record<string, string>): Promise<unknown> {
     try {
       const res = await this._fetch(url, { method: 'GET', headers });
-      if (!res.ok) return null;
+      if (!res.ok) return undefined;
       return await res.json();
     } catch {
-      return null;
+      return undefined;
     }
   }
 
@@ -683,6 +813,8 @@ export class BridgeRuntimeService {
     }
     this._currentAuthToken = undefined;
     this._started = false;
+    // An in-flight catch-up must not land in a later start() of this service.
+    this._catchUpSeq += 1;
     clearPendingAuthorizationChange();
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@nebulr-group/bridge-angular",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Bridge Angular library. Adds Bridge authentication, feature flags, and payments to your Angular application.",
   "author": "Iman Pouya",
   "license": "MIT",
@@ -33,7 +33,7 @@
     "@angular/forms": "^19.0.0",
     "@angular/platform-browser": "^19.0.0",
     "@angular/router": "^19.0.0",
-    "@nebulr-group/bridge-auth-core": ">=0.7.1 <1.0.0"
+    "@nebulr-group/bridge-auth-core": ">=0.7.3 <1.0.0"
   },
   "devDependencies": {
     "@angular/compiler": "^19.0.0",
@@ -46,7 +46,7 @@
     "ng-packagr": "^19.0.0",
     "typescript": "~5.6.0",
     "zone.js": "~0.15.0",
-    "@nebulr-group/bridge-auth-core": "0.7.1"
+    "@nebulr-group/bridge-auth-core": "0.7.3"
   },
   "keywords": [
     "angular",

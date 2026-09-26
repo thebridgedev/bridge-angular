@@ -2,16 +2,28 @@
  * Pre-setup script for bridge-angular E2E tests.
  *
  * Runs BEFORE Playwright starts to:
- * 1. Create or get the persistent test app (idempotent)
- * 2. Write the app ID into the demo environment file so the demo app starts with it
+ * 1. Health-check the test-data API, so a wrong URL or key fails before the
+ *    demo is even compiled
+ * 2. Create or get the persistent test app (idempotent)
+ *
+ * It no longer writes the app id into `demo/src/environments/environment.test.<mode>.ts`.
+ * That file is tracked, so every run dirtied the checkout with a generated id
+ * — and a clean checkout had to run this first or the demo booted with an
+ * empty app id. The demo now prefers `localStorage['bridge:appId']`, which
+ * `global-setup.ts` resolves and seeds per Playwright worker (TBP-721, the
+ * Angular port of bridge-svelte's TBP-606).
  *
  * Usage: npx tsx e2e/playwright/pre-setup.ts [mode]
  *   mode: test.local (default), test.stage, test.prod
  */
 
 import * as dotenv from 'dotenv';
-import * as fs from 'fs';
 import * as path from 'path';
+import {
+  DEFAULT_PROD_API_BASE_URL,
+  DEFAULT_STAGE_API_BASE_URL,
+  demoBaseUrl,
+} from './config/environments';
 
 const rootDir = path.resolve(__dirname, '../..');
 dotenv.config({
@@ -22,15 +34,7 @@ dotenv.config({
 async function preSetup() {
   const mode = process.argv[2] || 'test.local';
 
-  // Map mode to environment file suffix
-  const envSuffix = mode.replace('test.', '');
-  const envFile = path.resolve(
-    rootDir,
-    `demo/src/environments/environment.test.${envSuffix}.ts`,
-  );
-
   console.log(`[pre-setup] Mode: ${mode}`);
-  console.log(`[pre-setup] Demo env file: ${envFile}`);
 
   if (!process.env.PLAYWRIGHT_TEST_API_KEY) {
     throw new Error(
@@ -42,11 +46,9 @@ async function preSetup() {
   // Determine test data API URL based on mode
   let testDataApiUrl: string;
   if (mode.includes('prod')) {
-    testDataApiUrl = process.env.PROD_TEST_DATA_API_URL || '';
-    if (!testDataApiUrl) throw new Error('PROD_TEST_DATA_API_URL is required for prod mode');
+    testDataApiUrl = process.env.PROD_TEST_DATA_API_URL || DEFAULT_PROD_API_BASE_URL;
   } else if (mode.includes('stage')) {
-    testDataApiUrl = process.env.STAGE_TEST_DATA_API_URL || '';
-    if (!testDataApiUrl) throw new Error('STAGE_TEST_DATA_API_URL is required for stage mode');
+    testDataApiUrl = process.env.STAGE_TEST_DATA_API_URL || DEFAULT_STAGE_API_BASE_URL;
   } else {
     testDataApiUrl = process.env.LOCAL_TEST_DATA_API_URL || 'http://localhost:3200';
   }
@@ -86,7 +88,7 @@ async function preSetup() {
       ownerPassword,
       // Honor LOCAL_BASE_URL / HARNESS_PORT so the registered callback origin
       // matches where the demo actually serves (playwright.config.ts webServer).
-      appUrl: process.env.LOCAL_BASE_URL || `http://localhost:${process.env.HARNESS_PORT || '3001'}`,
+      appUrl: demoBaseUrl(),
     }),
   });
 
@@ -103,23 +105,10 @@ async function preSetup() {
   console.log(`[pre-setup]   Domain: ${result.domain}`);
   console.log(`[pre-setup]   Owner: ${result.email}`);
 
-  // Write the app ID into the Angular environment file
-  if (!fs.existsSync(envFile)) {
-    throw new Error(`Demo env file not found: ${envFile}`);
-  }
-
-  let content = fs.readFileSync(envFile, 'utf-8');
-
-  // Replace bridgeAppId: '...' with the actual app ID
-  content = content.replace(
-    /bridgeAppId:\s*'[^']*'/,
-    `bridgeAppId: '${appId}'`,
+  console.log(
+    `\n[pre-setup] Done. global-setup seeds this app id into the browser — ` +
+      `no demo environment file is written.\n`,
   );
-
-  fs.writeFileSync(envFile, content);
-  console.log(`[pre-setup] Updated ${envFile} with bridgeAppId: '${appId}'`);
-
-  console.log(`\n[pre-setup] Done. Demo app will start with the correct app ID.\n`);
 }
 
 preSetup().catch((err) => {

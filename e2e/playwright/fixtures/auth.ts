@@ -6,27 +6,81 @@ import {
 } from '../config/environments';
 import { type PlaywrightTestAccount, TestDataClient } from '../utils/test-data-client';
 import { LONG_TIMEOUT, MED_TIMEOUT } from './timeouts';
+import {
+  BASELINE_APP_CONFIG,
+  isBaselineConfig,
+  markAppConfigDirty,
+  takeAppConfigDirty,
+  workerAppFor,
+  type WorkerApp,
+} from './worker-app';
 
 export interface AuthFixtures {
   testUser: PlaywrightTestAccount;
   authenticatedPage: Page;
   envConfig: EnvironmentConfig;
   testDataClient: TestDataClient;
+  /** The Bridge app this worker owns — see fixtures/worker-app.ts (TBP-721) */
+  workerApp: WorkerApp;
+  /**
+   * Auto-use guard that puts this worker's app back on {@link BASELINE_APP_CONFIG}
+   * when the previous test in this worker left it off it.
+   */
+  appConfigBaseline: void;
 }
 
 export const test = base.extend<AuthFixtures>({
-  envConfig: async ({}, use) => {
-    const env = getCurrentEnvironment();
-    const config = getEnvironmentConfig(env);
-    await use(config);
+  // The Bridge app provisioned for this worker by global-setup.
+  workerApp: async ({}, use, testInfo) => {
+    await use(workerAppFor(testInfo.parallelIndex));
   },
 
+  // Every browser context in this worker boots the demo with THIS worker's app
+  // id (seeded as localStorage `bridge:appId`), which is what stops one worker's
+  // app-level writes from being visible to another. Overrides the config-level
+  // `use.storageState`.
+  storageState: async ({ workerApp }, use) => {
+    await use(workerApp.storageStatePath);
+  },
+
+  // Environment configuration, narrowed to this worker's app.
+  envConfig: async ({ workerApp }, use) => {
+    const env = getCurrentEnvironment();
+    const config = getEnvironmentConfig(env);
+    await use({ ...config, appId: workerApp.appId, appDomain: workerApp.appDomain });
+  },
+
+  // Test data client for API operations. `configureApp` is wrapped so the
+  // baseline guard below knows whether anything actually needs undoing.
   testDataClient: async ({ envConfig }, use) => {
     const client = new TestDataClient(envConfig);
+    const configureApp = client.configureApp.bind(client);
+    client.configureApp = async (config) => {
+      if (!isBaselineConfig(config)) markAppConfigDirty();
+      return configureApp(config);
+    };
     await use(client);
   },
 
-  testUser: async ({ testDataClient }, use) => {
+  // Restore the app-level baseline when — and only when — a previous test in
+  // this worker moved off it and died before its own `finally` put it back.
+  // Safe because the app is this worker's alone and tests within a worker run
+  // serially; cheap because it fires only after a spec that changed something.
+  appConfigBaseline: [
+    async ({ testDataClient }, use) => {
+      if (takeAppConfigDirty()) {
+        await testDataClient.configureApp({ ...BASELINE_APP_CONFIG }).catch(() => {});
+      }
+      await use();
+    },
+    { auto: true },
+  ],
+
+  testUser: async ({ testDataClient, appConfigBaseline }, use) => {
+    // Depended on, not used: orders the baseline reset before the account is
+    // created, so the tenant is onboarded against the baseline app config.
+    void appConfigBaseline;
+
     const account = await testDataClient.createTestAccount();
     console.log(`[fixture] Created test account: ${account.email}`);
 
@@ -40,8 +94,15 @@ export const test = base.extend<AuthFixtures>({
     }
   },
 
-  authenticatedPage: async ({ page, testUser, envConfig }, use) => {
-    await loginViaBridgeAuth(page, testUser.email, testUser.password, envConfig);
+  // Logs in through the in-app SDK login (/auth/login), as bridge-svelte's
+  // fixture always has. It used to go through the hosted portal, and
+  // bridge-angular gives no way to point hosted login anywhere but the
+  // production portal (BridgeConfig has no `hostedUrl`), so on stage every
+  // authenticated spec died on a production login page that does not know the
+  // stage app (TBP-721). The hosted flow keeps its own coverage in
+  // auth/login-logout.spec.ts via `loginViaBridgeAuth`.
+  authenticatedPage: async ({ page, testUser }, use) => {
+    await loginViaSdkAuth(page, testUser.email, testUser.password);
     await use(page);
   },
 });
@@ -57,7 +118,6 @@ export async function loginViaBridgeAuth(
   console.log(`[login] Starting login for ${email}`);
 
   await page.goto('/');
-  await page.waitForLoadState('networkidle');
   console.log(`[login] On home page: ${page.url()}`);
 
   const loginButton = page.locator('button:has-text("Login with Bridge")');
@@ -114,7 +174,11 @@ export async function loginViaBridgeAuth(
     // May still be processing
   }
 
-  await page.waitForLoadState('networkidle');
+  // The next branch reads page.url(), so the document that redirect landed on
+  // has to be parsed first. domcontentloaded says exactly that and always
+  // fires; network idle never would, because the demo holds a live realtime
+  // WebSocket once the SDK has booted (TBP-721, port of svelte TBP-605).
+  await page.waitForLoadState('domcontentloaded');
 
   const currentUrl = page.url();
   if (
@@ -170,7 +234,6 @@ export async function loginViaSdkAuth(
   console.log(`[sdk-login] Starting SDK login for ${email}`);
 
   await page.goto('/auth/login');
-  await page.waitForLoadState('networkidle');
 
   const emailInput = page.locator('#login-email');
   await emailInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
@@ -200,8 +263,12 @@ export async function loginViaSdkAuth(
     { timeout: LONG_TIMEOUT },
   );
 
-  await page.waitForURL('**/protected', { timeout: MED_TIMEOUT }).catch(() => {
-    /* may not redirect to /protected in all configurations */
+  // The login form navigates wherever the page wires it to (the demo: '/'), so
+  // wait for the authenticated nav rather than a URL. This used to wait for
+  // /protected — a route the demo never lands on — and swallowed the timeout,
+  // costing every login a flat MED_TIMEOUT.
+  await expect(page.locator('button:has-text("Logout")')).toBeVisible({
+    timeout: LONG_TIMEOUT,
   });
 
   console.log(`[sdk-login] SDK login complete for ${email}. Current URL: ${page.url()}`);
@@ -285,7 +352,11 @@ async function waitForOAuthFlowCompletion(page: Page): Promise<void> {
       // Timeout — check state
     }
 
-    await page.waitForLoadState('networkidle');
+    // The loop's next pass reads page.url() to decide whether we are still on a
+    // transit page, so the landed document must be parsed. domcontentloaded
+    // states that and terminates; network idle cannot while the realtime
+    // WebSocket is open.
+    await page.waitForLoadState('domcontentloaded');
     redirectCount++;
   }
 

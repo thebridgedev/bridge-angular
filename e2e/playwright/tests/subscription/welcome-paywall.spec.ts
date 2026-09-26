@@ -27,6 +27,7 @@
  */
 
 import { test, expect, loginViaSdkAuth } from '../../fixtures/auth';
+import { PAYWALL_PLAN } from '../../fixtures/plans';
 import { LONG_TIMEOUT, MED_TIMEOUT } from '../../fixtures/timeouts';
 
 const STRIPE_TEST_PK = process.env.STRIPE_TEST_PK || '';
@@ -174,7 +175,11 @@ test.describe('Welcome Paywall — first-time user flow', () => {
     // ONCE; every subsequent run reuses them with NO Stripe re-sync, so by
     // checkout time the price has been active+checkout-ready for ages. The plan is
     // intentionally NOT deleted in teardown — it persists for reuse.
-    const planKey = 'e2e-paywall-pro';
+    //
+    // TBP-721: global-setup now `ensurePlan`s this on every worker app before the
+    // run, so even a brand-new worker app arrives here with a synced price. The
+    // call below stays as the fallback for anyone running this spec in isolation.
+    const planKey = PAYWALL_PLAN.key;
 
     try {
       // ---- Arrange: configure the app for Stripe + paywall, and ensure the paid plan
@@ -183,24 +188,26 @@ test.describe('Welcome Paywall — first-time user flow', () => {
         stripeEnabled: true,
         stripePublicKey: STRIPE_TEST_PK,
         stripeSecretKey: STRIPE_TEST_SK,
-        currency: 'USD',
+        currency: PAYWALL_PLAN.currency,
       });
 
       // Create-if-absent: on the first ever run this creates the plan and syncs
       // its Stripe price once; on every later run it returns the existing plan
       // WITHOUT re-triggering the Stripe archive sweep (the flake source).
-      await testDataClient.ensurePlan({
-        key: planKey,
-        name: 'Paywall Pro',
-        description: 'Paid plan for welcome-paywall E2E (stable, reused across runs)',
-        trial: false,
-        trialDays: 0,
-        prices: [{ amount: 2900, currency: 'USD', recurrenceInterval: 'month' }],
-      });
+      await testDataClient.ensurePlan({ ...PAYWALL_PLAN.definition });
 
-      // ---- 1a. Force the "no plan selected" state by deleting the seeded TEAM
-      //          plan the new tenant auto-binds to. Recreated in finally.
-      await testDataClient.deletePlan('TEAM').catch(() => {});
+      // ---- 1a. Force the "no plan selected" state. createPlaywrightTestAccount
+      //          auto-binds the new tenant to the app's `TEAM` trial plan, so
+      //          `shouldSelectPlan` would be `false` out of the gate.
+      //
+      //          This used to delete the app's TEAM plan and recreate it in the
+      //          `finally`. That is app-level state: every test in every other
+      //          worker creating an account meanwhile got 404 "has no plan with
+      //          key: TEAM", and an interrupted run left the app without it for
+      //          good (TBP-721). `clearTenantPlan` reaches the same state on THIS
+      //          tenant only, which is what bridge-svelte's copy does (TBP-370).
+      const cleared = await testDataClient.clearTenantPlan(testUser.tenantId);
+      expect(cleared.shouldSelectPlan).toBe(true);
 
       // ---- 1. Sign in the fresh test user via in-app SDK auth (no plan yet)
       await loginViaSdkAuth(page, testUser.email, testUser.password);
@@ -381,22 +388,15 @@ test.describe('Welcome Paywall — first-time user flow', () => {
       expect(finalPath).not.toBe('/welcome');
       expect(finalPath).toBe('/protected');
     } finally {
-      // ---- Cleanup: restore the TEAM trial plan that other tests rely on and
-      //               disable Stripe.
+      // ---- Cleanup: disable Stripe and the paywall redirect.
+      //
+      // The TEAM plan no longer needs restoring: the setup above leaves it
+      // untouched (TBP-721).
       //
       // We do NOT delete the stable `e2e-paywall-pro` plan: it is meant to persist
       // and be reused across runs so its Stripe price stays synced+active. Deleting
       // it would re-run the Stripe archive sweep AND force the next run to recreate
       // (and re-race) the price — exactly the flake this change removes.
-      await testDataClient
-        .createPlan({
-          key: 'TEAM',
-          name: 'Team',
-          trial: true,
-          trialDays: 14,
-          prices: [{ amount: 99, currency: 'EUR', recurrenceInterval: 'month' }],
-        })
-        .catch(() => {});
       await testDataClient
         .configureApp({ paymentsAutoRedirect: false, stripeEnabled: false })
         .catch(() => {});

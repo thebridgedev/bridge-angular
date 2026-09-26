@@ -1,4 +1,8 @@
-import { EnvironmentConfig } from '../config/environments';
+import {
+  DEFAULT_PROD_API_BASE_URL,
+  DEFAULT_STAGE_API_BASE_URL,
+  EnvironmentConfig,
+} from '../config/environments';
 
 export interface PlaywrightTestAccount {
   email: string;
@@ -278,6 +282,35 @@ export class TestDataClient {
   }
 
   /**
+   * Clears a tenant's plan, putting it in the "never onboarded" state so the
+   * paywall redirect fires (bridge-api TBP-370; same helper as bridge-svelte).
+   *
+   * `createPlaywrightTestAccount` binds every new tenant to a TEAM trial, so a
+   * fresh fixture account reports `shouldSelectPlan: false` and can never reach
+   * the plan-selection flow. Use this instead of deleting the app's plan and
+   * recreating it in a `finally` — that mutates state every spec shares.
+   */
+  async clearTenantPlan(
+    tenantId: string,
+  ): Promise<{ shouldSelectPlan: boolean; shouldSetupPayments: boolean; plan?: string }> {
+    const response = await fetch(`${this.baseUrl}/account/test/playwright/clear-tenant-plan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-playwright-api-key': this.apiKey,
+      },
+      body: JSON.stringify({ appDomain: this.appDomain, tenantId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to clear tenant plan: ${response.status} ${error}`);
+    }
+
+    return response.json();
+  }
+
+  /**
    * Generates a fresh password reset link for a test account, letting E2E tests
    * navigate to /auth/set-password/[token] without email interception.
    * Mirrors bridge-svelte's `getPasswordResetLink`.
@@ -336,20 +369,27 @@ export class TestDataClient {
   }
 }
 
-export function createTestDataClientFromEnv(): TestDataClient {
+/**
+ * @param appDomain - Target a specific app domain instead of `APP_DOMAIN`.
+ *   global-setup uses this to talk to each worker's own app while provisioning
+ *   them — at which point `BRIDGE_TEST_APP_ID` does not exist yet, so
+ *   `getEnvironmentConfig()` cannot be used (TBP-721).
+ */
+export function createTestDataClientFromEnv(appDomain?: string): TestDataClient {
   const projectName = process.env.PLAYWRIGHT_PROJECT_NAME || '';
   let testDataApiUrl: string;
 
   if (projectName.includes('prod')) {
-    testDataApiUrl = process.env.PROD_TEST_DATA_API_URL || '';
+    testDataApiUrl = process.env.PROD_TEST_DATA_API_URL || DEFAULT_PROD_API_BASE_URL;
   } else if (projectName.includes('stage')) {
-    testDataApiUrl = process.env.STAGE_TEST_DATA_API_URL || '';
+    testDataApiUrl = process.env.STAGE_TEST_DATA_API_URL || DEFAULT_STAGE_API_BASE_URL;
   } else {
     testDataApiUrl = process.env.LOCAL_TEST_DATA_API_URL || 'http://localhost:3200';
   }
 
   const testDataApiKey = process.env.PLAYWRIGHT_TEST_API_KEY;
-  const appDomain = process.env.APP_DOMAIN || 'BRIDGE_ANGULAR_TEST_DASHBOARD';
+  const resolvedAppDomain =
+    appDomain || process.env.APP_DOMAIN || 'BRIDGE_ANGULAR_TEST_DASHBOARD';
 
   if (!testDataApiKey) {
     throw new Error('PLAYWRIGHT_TEST_API_KEY environment variable is required');
@@ -358,10 +398,11 @@ export function createTestDataClientFromEnv(): TestDataClient {
   return new TestDataClient({
     name: 'local',
     baseUrl: '',
+    apiBaseUrl: testDataApiUrl,
     testDataApiUrl,
     testDataApiKey,
     appId: process.env.BRIDGE_TEST_APP_ID || '',
-    appDomain,
+    appDomain: resolvedAppDomain,
     isContainer: false,
   });
 }

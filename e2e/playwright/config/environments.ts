@@ -4,6 +4,12 @@
 
 export interface EnvironmentConfig {
   baseUrl: string;
+  /**
+   * The Bridge API base the demo's SDK talks to for this project — the URL
+   * specs must route/mock/probe against. Specs used to read it off this object
+   * while it did not exist, so `page.route(\`${undefined}/…\`)` never matched.
+   */
+  apiBaseUrl: string;
   authBaseUrl?: string;
   cloudViewsUrl?: string;
   testDataApiUrl: string;
@@ -12,6 +18,26 @@ export interface EnvironmentConfig {
   appDomain: string;
   name: 'local' | 'stage' | 'prod';
   isContainer: boolean;
+}
+
+/**
+ * Public, fixed endpoints for the hosted environments. Defaults rather than
+ * required settings so a clean checkout can run the stage/prod suites without
+ * uncommenting anything (TBP-721, ported from bridge-svelte TBP-606). Override
+ * via STAGE_* / PROD_* when pointing the suite at a different backend.
+ */
+export const DEFAULT_STAGE_API_BASE_URL = 'https://api-stage.thebridge.dev';
+export const DEFAULT_PROD_API_BASE_URL = 'https://api.thebridge.dev';
+
+/**
+ * Where the demo answers for this run. `playwright.config.ts` serves it on
+ * `HARNESS_PORT` (default 3001), so everything that needs the demo origin —
+ * global-setup's app registration, `envConfig.baseUrl` for emailed links —
+ * must derive it the same way. Hard-coding :3001 here registered the wrong
+ * callback origin whenever the harness ran on another port.
+ */
+export function demoBaseUrl(): string {
+  return process.env.LOCAL_BASE_URL || `http://localhost:${process.env.HARNESS_PORT || '3001'}`;
 }
 
 function isRunningInContainer(): boolean {
@@ -52,7 +78,7 @@ export function getEnvironmentConfig(environment: 'local' | 'stage' | 'prod'): E
 
   const baseUrl = isContainer
     ? getServiceUrl('bridge-angular', 3001, 3008, isContainer)
-    : process.env.LOCAL_BASE_URL || 'http://localhost:3001';
+    : demoBaseUrl();
 
   const appId = requireEnv('BRIDGE_TEST_APP_ID');
 
@@ -73,6 +99,7 @@ export function getEnvironmentConfig(environment: 'local' | 'stage' | 'prod'): E
       return {
         name: 'local',
         baseUrl,
+        apiBaseUrl: process.env.LOCAL_API_BASE_URL || 'http://localhost:3200',
         authBaseUrl,
         cloudViewsUrl,
         testDataApiUrl,
@@ -87,9 +114,11 @@ export function getEnvironmentConfig(environment: 'local' | 'stage' | 'prod'): E
       return {
         name: 'stage',
         baseUrl,
-        authBaseUrl: requireEnv('STAGE_AUTH_BASE_URL'),
-        cloudViewsUrl: requireEnv('STAGE_CLOUD_VIEWS_URL'),
-        testDataApiUrl: requireEnv('STAGE_TEST_DATA_API_URL'),
+        apiBaseUrl: process.env.STAGE_API_BASE_URL || DEFAULT_STAGE_API_BASE_URL,
+        authBaseUrl: process.env.STAGE_AUTH_BASE_URL || `${DEFAULT_STAGE_API_BASE_URL}/auth`,
+        cloudViewsUrl:
+          process.env.STAGE_CLOUD_VIEWS_URL || `${DEFAULT_STAGE_API_BASE_URL}/cloud-views`,
+        testDataApiUrl: process.env.STAGE_TEST_DATA_API_URL || DEFAULT_STAGE_API_BASE_URL,
         testDataApiKey,
         appId,
         appDomain,
@@ -100,7 +129,8 @@ export function getEnvironmentConfig(environment: 'local' | 'stage' | 'prod'): E
       return {
         name: 'prod',
         baseUrl,
-        testDataApiUrl: requireEnv('PROD_TEST_DATA_API_URL'),
+        apiBaseUrl: DEFAULT_PROD_API_BASE_URL,
+        testDataApiUrl: process.env.PROD_TEST_DATA_API_URL || DEFAULT_PROD_API_BASE_URL,
         testDataApiKey,
         appId,
         appDomain,

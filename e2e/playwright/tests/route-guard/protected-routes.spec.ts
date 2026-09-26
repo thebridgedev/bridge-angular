@@ -33,7 +33,6 @@ test.describe('Protected Routes', () => {
     const page = authenticatedPage;
 
     await page.goto('/protected');
-    await page.waitForLoadState('networkidle');
 
     const heading = page.locator('h1:has-text("Protected Page")');
     await expect(heading).toBeVisible({ timeout: MED_TIMEOUT });
@@ -50,7 +49,6 @@ test.describe('Protected Routes', () => {
     const page = authenticatedPage;
 
     await page.goto('/protected');
-    await page.waitForLoadState('networkidle');
 
     await expect(
       page.locator('p').filter({ hasText: 'Email:' }).filter({ hasText: testUser.email }),

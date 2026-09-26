@@ -10,17 +10,25 @@
  *   4. `bridge.tenant.entitlements.can(...)` answers synchronously.
  *   5. `bridge.app.plans` is lazy (null) before .load(); resolves after.
  *
- * NOT YET RUN — full milestone-end E2E pass is environment-deferred (matches the
- * svelte source spec's deferral note + plugin E2E env gaps TBP-405/406).
+ * Every assertion here reads a slice of the AUTHENTICATED session snapshot —
+ * `bridge.tenant`, `bridge.user`, the entitlement map, and `bridge.app.plans`
+ * (whose `load()` calls `BridgeAuth.getPlans`, which throws `Not authenticated`
+ * without a session). So each test takes `authenticatedPage`, not `page`.
+ *
+ * TBP-721: the file was ported with the plain `page` fixture and marked
+ * "NOT YET RUN". The stage suite then ran it on an anonymous page — the
+ * snapshot wait timing out, `app_active` false, `getPlans` throwing
+ * `Not authenticated` — exactly what bridge-svelte hit and fixed in TBP-607.
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/auth';
 import { MED_TIMEOUT } from '../../fixtures/timeouts';
 
 test.describe('Unified bridge surface — session.snapshot end-to-end', () => {
-  test('snapshot lands and populates bridge.tenant + bridge.user', async ({ page }) => {
+  test('snapshot lands and populates bridge.tenant + bridge.user', async ({
+    authenticatedPage: page,
+  }) => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
     // The Angular demo exposes `window.bridge` (AppComponent) with signal slices
     // adapted to a `{ subscribe }` shape so this svelte-origin probe works as-is.
@@ -57,15 +65,41 @@ test.describe('Unified bridge surface — session.snapshot end-to-end', () => {
     expect(value.user.tenantId).toBe(value.tenantId);
   });
 
-  test('entitlements.can() answers from the snapshot map', async ({ page }) => {
+  test('entitlements.can() answers from the snapshot map', async ({
+    authenticatedPage: page,
+  }) => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
+    // Gate on the entitlement MAP arriving, not merely on `window.bridge`
+    // existing (ported from bridge-svelte, TBP-686).
+    //
+    // This used to return `{ app_active: can('app_active') }` unconditionally.
+    // That object is always truthy, so `waitForFunction` resolved on its very
+    // first tick — the moment `window.bridge` was defined, long before the
+    // session snapshot lands — and asserted the pre-snapshot `false`.
+    //
+    // `entitlements.snapshot` is null until the snapshot arrives, so it is the
+    // honest gate: null means "not loaded", a map means there is a real answer
+    // to assert. The sibling snapshot test above already gates this way.
     const canApp = await page.waitForFunction(
       () => {
-        const w = window as unknown as { bridge?: { tenant: { entitlements: { can: (k: string) => boolean } } } };
+        const w = window as unknown as {
+          bridge?: {
+            tenant: {
+              entitlements: {
+                can: (k: string) => boolean;
+                snapshot: { subscribe: (cb: (v: unknown) => void) => () => void };
+              };
+            };
+          };
+        };
         if (!w.bridge) return null;
-        // app_active is the canonical "is the workspace allowed in" entitlement.
+        let map: unknown = null;
+        const unsub = w.bridge.tenant.entitlements.snapshot.subscribe((v) => { map = v; });
+        unsub();
+        if (!map) return null;
+        // app_active is the canonical "is the workspace allowed in" entitlement;
+        // every active workspace should report true.
         return { app_active: w.bridge.tenant.entitlements.can('app_active') };
       },
       { timeout: MED_TIMEOUT },
@@ -74,9 +108,19 @@ test.describe('Unified bridge surface — session.snapshot end-to-end', () => {
     expect(value).toEqual({ app_active: true });
   });
 
-  test('bridge.app.plans is lazy — null until .load(), populated after', async ({ page }) => {
+  test('bridge.app.plans is lazy — null until .load(), populated after', async ({
+    authenticatedPage: page,
+  }) => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+
+    // What the first evaluate needs is `window.bridge`, so wait for that — the
+    // same probe the other tests in this file use. Waiting for the network to go
+    // idle would never return: the demo holds a realtime WebSocket.
+    await page.waitForFunction(
+      () => !!(window as unknown as { bridge?: unknown }).bridge,
+      undefined,
+      { timeout: MED_TIMEOUT },
+    );
 
     // Initially null.
     const initial = await page.evaluate(() => {

@@ -16,7 +16,6 @@ test.describe('Create User (Sign Up) Flow', () => {
 
     try {
       await page.goto('/');
-      await page.waitForLoadState('networkidle');
 
       const loginButton = page.locator('button:has-text("Login with Bridge")');
       await expect(loginButton).toBeVisible({ timeout: MED_TIMEOUT });
@@ -33,7 +32,6 @@ test.describe('Create User (Sign Up) Flow', () => {
       const loginUrl = new URL(page.url());
       const signupUrl = `${loginUrl.origin}${loginUrl.pathname.replace(/\/login.*$/, '').replace(/\/?$/, '')}/signup`;
       await page.goto(signupUrl);
-      await page.waitForLoadState('networkidle');
 
       await expect(
         page.getByRole('heading', { name: /create an account/i }),

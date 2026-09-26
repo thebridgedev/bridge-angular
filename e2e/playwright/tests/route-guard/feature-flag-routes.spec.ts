@@ -9,7 +9,14 @@ test.describe('Feature Flag Route Guards', () => {
     const page = authenticatedPage;
 
     await page.goto('/beta');
-    await page.waitForLoadState('networkidle');
+
+    // What this test waits for is the guard settling on a destination — either it
+    // let us stay on /beta or it bounced us to '/'. Waiting for the network to go
+    // idle would never return while the realtime WebSocket is open.
+    await page.waitForURL(
+      (url) => url.pathname === '/beta' || url.pathname === '/',
+      { timeout: LONG_TIMEOUT },
+    );
 
     const currentUrl = page.url();
     const pathname = new URL(currentUrl).pathname;
@@ -28,7 +35,14 @@ test.describe('Feature Flag Route Guards', () => {
 
     try {
       await page.goto('/beta');
-      await page.waitForLoadState('networkidle');
+
+      // Wait for the guard to settle on one of its possible destinations rather
+      // than for network idle, which the realtime WebSocket prevents.
+      await page.waitForURL(
+        (url) =>
+          url.pathname === '/beta' || url.pathname === '/' || url.pathname.startsWith('/auth/'),
+        { timeout: LONG_TIMEOUT },
+      );
 
       const currentUrl = page.url();
       expect(currentUrl).toBeTruthy();

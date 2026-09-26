@@ -9,7 +9,6 @@ test.describe('Login & Logout Flow', () => {
 
     try {
       await page.goto('/');
-      await page.waitForLoadState('networkidle');
 
       const loginButton = page.locator('button:has-text("Login with Bridge")');
       await expect(loginButton).toBeVisible({ timeout: MED_TIMEOUT });
@@ -36,7 +35,6 @@ test.describe('Login & Logout Flow', () => {
     const page = authenticatedPage;
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
     await expect(page.locator('a.nav-link:has-text("Home")')).toBeVisible({
       timeout: MED_TIMEOUT,
@@ -56,14 +54,25 @@ test.describe('Login & Logout Flow', () => {
     const page = authenticatedPage;
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
     await expect(page.locator('button:has-text("Logout")')).toBeVisible({
       timeout: MED_TIMEOUT,
     });
 
+    const demoOrigin = new URL(page.url()).origin;
     await page.locator('button:has-text("Logout")').click();
-    await page.waitForLoadState('networkidle');
+
+    // logout() clears the session and hard-redirects to the hosted logout page.
+    // Wait for that navigation to leave the demo, then come back to the demo
+    // origin: reading localStorage while the redirect is in flight races the
+    // navigation, and reading it on the hosted page reads another origin's
+    // storage, which says nothing about the demo's tokens. Network idle was
+    // never the right signal — the realtime WebSocket keeps it from arriving.
+    await page.waitForURL((url) => url.origin !== demoOrigin, { timeout: LONG_TIMEOUT });
+    await page.goto(demoOrigin + '/');
+    await expect(page.locator('button:has-text("Login with Bridge")')).toBeVisible({
+      timeout: MED_TIMEOUT,
+    });
 
     const hasTokens = await page.evaluate(() => {
       const __k = Object.keys(localStorage).find(

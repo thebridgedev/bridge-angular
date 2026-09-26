@@ -52,6 +52,11 @@ export default defineConfig({
   use: {
     baseURL: process.env.LOCAL_BASE_URL || DEFAULT_BASE_URL,
 
+    // global-setup resolves the Bridge app id and writes it here as
+    // localStorage `bridge:appId`, which the demo prefers over its environment
+    // file (TBP-721). Every context starts from it; no auth tokens are in it.
+    storageState: path.resolve(__dirname, 'e2e/playwright/.auth/base-state.json'),
+
     trace: process.env.PLAYWRIGHT_RECORD_ALL === 'true' ? 'on' : 'retain-on-failure',
     screenshot: process.env.PLAYWRIGHT_RECORD_ALL === 'true' ? 'on' : 'only-on-failure',
     video: process.env.PLAYWRIGHT_RECORD_ALL === 'true' ? 'on' : 'retain-on-failure',

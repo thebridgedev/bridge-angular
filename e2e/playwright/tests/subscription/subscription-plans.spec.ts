@@ -6,6 +6,7 @@
  */
 
 import { test, expect } from '../../fixtures/auth';
+import { createCleanContext } from '../../fixtures/clean-page';
 import { LONG_TIMEOUT, MED_TIMEOUT } from '../../fixtures/timeouts';
 
 test.describe('Subscription Plans', () => {
@@ -13,7 +14,6 @@ test.describe('Subscription Plans', () => {
     const page = authenticatedPage;
 
     await page.goto('/subscription');
-    await page.waitForLoadState('networkidle');
 
     // Wait for plan selector to stop loading
     const planSelector = page.locator('[data-bridge-plan-selector]');
@@ -22,21 +22,23 @@ test.describe('Subscription Plans', () => {
     // Wait until data-loading is false
     await expect(planSelector).not.toHaveAttribute('data-loading', 'true', { timeout: LONG_TIMEOUT });
 
-    // Should show at least one plan card (or empty state)
+    // Should show at least one plan card (or the empty state).
+    //
+    // Web-first, not a one-shot `count()`/`isVisible()` pair: `not.toHaveAttribute`
+    // above is also satisfied while the attribute is simply *absent*, which it is
+    // for a frame before PlanSelector sets `data-loading="true"`. Reading the counts
+    // once at that instant sees zero cards on a page that renders them a tick later
+    // (found in bridge-svelte, TBP-604).
     const planCards = page.locator('[data-bridge-plan-card]');
     const emptyState = page.locator('.bridge-plan-empty');
 
-    const cardCount = await planCards.count();
-    const hasEmpty = await emptyState.isVisible();
-
-    expect(cardCount > 0 || hasEmpty).toBeTruthy();
+    await expect(planCards.first().or(emptyState)).toBeVisible({ timeout: LONG_TIMEOUT });
   });
 
   test('/subscription page shows plan selector in correct state', async ({ authenticatedPage }) => {
     const page = authenticatedPage;
 
     await page.goto('/subscription');
-    await page.waitForLoadState('networkidle');
 
     const planSelector = page.locator('[data-bridge-plan-selector]');
     await expect(planSelector).toBeVisible({ timeout: MED_TIMEOUT });
@@ -78,7 +80,6 @@ test.describe('Subscription Plans', () => {
     });
 
     await page.goto('/subscription');
-    await page.waitForLoadState('networkidle');
 
     const planSelector = page.locator('[data-bridge-plan-selector]');
     await expect(planSelector).not.toHaveAttribute('data-loading', 'true', { timeout: LONG_TIMEOUT });
@@ -94,7 +95,6 @@ test.describe('Subscription Plans', () => {
   });
 
   test('/subscription is not accessible without authentication', async ({ browser }) => {
-    const { createCleanContext } = await import('../../fixtures/clean-page');
     const { page, cleanup } = await createCleanContext(browser);
 
     try {

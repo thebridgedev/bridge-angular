@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from '../../fixtures/auth';
 import { MED_TIMEOUT } from '../../fixtures/timeouts';
 
 test.describe('Bridge Initialization', () => {
@@ -12,7 +12,11 @@ test.describe('Bridge Initialization', () => {
     });
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
+
+    // What this test waits for is "the app finished booting", which the rendered
+    // heading states. It cannot wait for the network to go idle: the demo holds a
+    // live realtime WebSocket, so idle never arrives.
+    await expect(page.locator('h1')).toBeVisible({ timeout: MED_TIMEOUT });
 
     const criticalErrors = consoleErrors.filter(
       (err) =>
@@ -26,7 +30,6 @@ test.describe('Bridge Initialization', () => {
 
   test('BridgeBootstrap initializes and renders the heading', async ({ page }) => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
     const heading = page.locator('h1');
     await expect(heading).toBeVisible({ timeout: MED_TIMEOUT });
@@ -34,7 +37,6 @@ test.describe('Bridge Initialization', () => {
 
   test('ConfigStatus component displays configuration state', async ({ page }) => {
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
     const configStatus = page.locator('text=Bridge');
     await expect(configStatus.first()).toBeVisible({ timeout: MED_TIMEOUT });

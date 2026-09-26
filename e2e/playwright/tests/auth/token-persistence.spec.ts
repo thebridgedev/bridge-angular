@@ -17,7 +17,13 @@ test.describe('Token Persistence', () => {
     expect(tokensBefore.accessToken).toBeTruthy();
 
     await page.reload();
-    await page.waitForLoadState('networkidle');
+
+    // The claim under test is that the reloaded app comes back authenticated, so
+    // wait for the authenticated nav before reading storage — not for the network
+    // to go idle, which the realtime WebSocket never lets happen.
+    await expect(page.locator('button:has-text("Logout")')).toBeVisible({
+      timeout: MED_TIMEOUT,
+    });
 
     const tokensAfter = await page.evaluate(() => {
       const __k = Object.keys(localStorage).find(
@@ -38,14 +44,12 @@ test.describe('Token Persistence', () => {
     const page = authenticatedPage;
 
     await page.goto('/');
-    await page.waitForLoadState('networkidle');
 
     await expect(page.locator('button:has-text("Logout")')).toBeVisible({
       timeout: MED_TIMEOUT,
     });
 
     await page.reload();
-    await page.waitForLoadState('networkidle');
 
     await expect(page.locator('button:has-text("Logout")')).toBeVisible({
       timeout: MED_TIMEOUT,
@@ -58,14 +62,12 @@ test.describe('Token Persistence', () => {
     const page = authenticatedPage;
 
     await page.goto('/protected');
-    await page.waitForLoadState('networkidle');
 
     await expect(page.locator('h1:has-text("Protected Page")')).toBeVisible({
       timeout: MED_TIMEOUT,
     });
 
     await page.reload();
-    await page.waitForLoadState('networkidle');
 
     await expect(page.locator('h1:has-text("Protected Page")')).toBeVisible({
       timeout: MED_TIMEOUT,

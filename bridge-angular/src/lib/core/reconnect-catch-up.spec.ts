@@ -9,6 +9,12 @@
  *
  * After ANY reconnect the runtime now re-reads billing state once — without
  * touching the token, so the self-refresh loop guard still holds.
+ *
+ * TBP-686 — and on the FIRST connect too: the pushed session.snapshot loses
+ * the race on a first connect (published during authorize, before the
+ * subscription is live), so the runtime reads `GET /session/init`. It also
+ * re-reads every quota metric already hydrated, since auth-core's QuotaStore
+ * never re-reads one and a lost `quota.updated` froze `used` for the session.
  */
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
@@ -23,8 +29,12 @@ import { AuthService } from '../shared/services/auth.service';
 import {
   __resetSnapshotStores,
   applySessionSnapshot,
+  appBrandingSignal,
   tenantEntitlementsSignal,
+  tenantIdSignal,
+  tenantNameSignal,
   tenantSubscriptionSignal,
+  userSnapshotSignal,
 } from './snapshot-stores';
 
 class FakeWebSocket implements WebSocketLike {
@@ -61,11 +71,29 @@ const realtimeFetch = (async (url: string) => {
 /** What the server says NOW — the catch-up reads this. */
 let server: { plan: { slug: string; name: string }; status: string; entitlements: Record<string, boolean> };
 let catchUpCalls: string[];
+let catchUpHeaders: Record<string, Record<string, string>>;
+/** Quota answers by metric (TBP-686). A metric missing here answers 404. */
+let quotaServer: Record<string, unknown>;
+/** When set, a request waits for this before answering — to race it. */
+let hold: ((path: string) => Promise<void>) | null;
 const catchUpFetch = (async (url: string, init?: RequestInit) => {
   const path = new URL(url).pathname;
   catchUpCalls.push(path);
   const headers = (init?.headers ?? {}) as Record<string, string>;
+  catchUpHeaders[path] = headers;
+  // Read what the server says NOW, before any hold, so a held answer is stale.
+  const snapshotNow = sessionSnapshot();
+  const quotaNow = quotaServer;
+  if (hold) await hold(path);
   if (!headers['Authorization']?.startsWith('Bearer ')) return { ok: false, status: 401, json: async () => ({}) };
+  if (path === '/session/init') {
+    return { ok: true, status: 200, json: async () => snapshotNow };
+  }
+  if (path.startsWith('/usage/quota/')) {
+    const metric = decodeURIComponent(path.slice('/usage/quota/'.length));
+    if (!(metric in quotaNow)) return { ok: false, status: 404, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => quotaNow[metric] };
+  }
   if (path === '/billing/state') {
     return { ok: true, status: 200, json: async () => ({ plan: server.plan, status: server.status }) };
   }
@@ -74,6 +102,20 @@ const catchUpFetch = (async (url: string, init?: RequestInit) => {
   }
   return { ok: false, status: 404, json: async () => ({}) };
 }) as unknown as typeof fetch;
+
+/** `GET /session/init` for the current `server` state. */
+function sessionSnapshot() {
+  return {
+    app: { branding: { logo: '', name: 'Acme' } },
+    tenant: {
+      id: 'ws-1',
+      name: 'Acme',
+      subscription: { plan: server.plan, status: server.status },
+      entitlements: server.entitlements,
+    },
+    user: { id: 'user-1', role: 'OWNER', tenantId: 'ws-1' },
+  };
+}
 
 function b64url(s: string): string {
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -161,6 +203,9 @@ beforeEach(() => {
   FakeWebSocket.instances = [];
   reauthCalls = 0;
   catchUpCalls = [];
+  catchUpHeaders = {};
+  quotaServer = {};
+  hold = null;
   reasons = [];
   server = { plan: { slug: 'free', name: 'Free' }, status: 'active', entitlements: { pro_page: false } };
   __resetSnapshotStores();
@@ -175,6 +220,7 @@ beforeEach(() => {
     user: { id: 'user-1', role: 'OWNER', tenantId: 'ws-1' },
   });
   const billing = useBridge();
+  billing.quotas.__resetForTests();
   billing.subscription.hydrate({ plan: { slug: 'free', name: 'Free' }, status: 'active' } as never);
   // No live pushes needed here — the catch-up is the path under test.
   vi.spyOn(billing, 'attachToRealtimeClient').mockImplementation((() => {}) as never);
@@ -203,7 +249,11 @@ describe('a reconnect caused by reauthorize() catches up (TBP-660)', () => {
     await start();
     connectOk(lastWs());
     await settle();
-    expect(catchUpCalls).toEqual([]); // first connect: nothing to catch up on
+    // TBP-686 — the first connect catches up too; the server matches the
+    // stores here, so it changes nothing. This test is about the swap below.
+    expect(catchUpCalls.sort()).toEqual(['/billing/state', '/entitlements', '/session/init']);
+    expect(reasons).toEqual([]);
+    catchUpCalls = [];
 
     // user.state_changed → token refresh → reauthorize(); the plan change is
     // published while the old socket is closing, and never arrives.
@@ -213,7 +263,7 @@ describe('a reconnect caused by reauthorize() catches up (TBP-660)', () => {
     connectOk(lastWs());
     await settle();
 
-    expect(catchUpCalls.sort()).toEqual(['/billing/state', '/entitlements']);
+    expect(catchUpCalls.sort()).toEqual(['/billing/state', '/entitlements', '/session/init']);
     expect(tenantSubscriptionSignal()?.plan).toEqual({ slug: 'pro', name: 'Pro' });
     expect(tenantEntitlementsSignal()).toEqual({ pro_page: true });
     expect(useBridge().subscription.snapshot().state?.plan.slug).toBe('pro');
@@ -249,7 +299,7 @@ describe('a reconnect caused by reauthorize() catches up (TBP-660)', () => {
     expect(reasons.filter((r) => r === 'reconnect')).toEqual(['reconnect']);
   });
 
-  it('nothing missed → two GETs and no authorization change', async () => {
+  it('nothing missed → three GETs per open and no authorization change', async () => {
     auth.tokens.set({ accessToken: token() });
     await start();
     connectOk(lastWs());
@@ -258,7 +308,8 @@ describe('a reconnect caused by reauthorize() catches up (TBP-660)', () => {
     connectOk(lastWs());
     await settle();
 
-    expect(catchUpCalls).toHaveLength(2);
+    // Three for the first connect (TBP-686), three for the reconnect.
+    expect(catchUpCalls).toHaveLength(6);
     expect(reasons).toEqual(['token']);
     expect(tenantSubscriptionSignal()?.plan.slug).toBe('free');
   });
@@ -281,7 +332,8 @@ describe('a genuine reconnect is unchanged, plus the catch-up (TBP-660)', () => 
     // starts (TBP-654). auth-core's refreshTokens() shares one in-flight
     // request between overlapping calls, so on the wire this is one refresh.
     expect(auth.refreshCalls).toBe(2);
-    expect(catchUpCalls).toHaveLength(2);
+    // Three for the first connect (TBP-686), three for the reconnect.
+    expect(catchUpCalls).toHaveLength(6);
     expect(tenantSubscriptionSignal()?.plan.slug).toBe('pro');
   });
 
@@ -293,5 +345,167 @@ describe('a genuine reconnect is unchanged, plus the catch-up (TBP-660)', () => 
     connectOk(lastWs());
     await settle();
     expect(catchUpCalls).toEqual([]);
+  });
+});
+
+describe('the first connect catches up on the snapshot the push lost (TBP-686)', () => {
+  it('fetches /session/init and fills tenant id, name, branding and user', async () => {
+    __resetSnapshotStores(); // the pushed snapshot never arrived
+    const t = token();
+    auth.tokens.set({ accessToken: t });
+    await start();
+    connectOk(lastWs());
+    await settle();
+
+    expect(catchUpCalls).toContain('/session/init');
+    expect(catchUpHeaders['/session/init']['Authorization']).toBe(`Bearer ${t}`);
+    expect(catchUpHeaders['/session/init']['x-app-id']).toBe('app-1');
+    expect(tenantIdSignal()).toBe('ws-1');
+    expect(tenantNameSignal()).toBe('Acme');
+    expect(appBrandingSignal()?.name).toBe('Acme');
+    expect(userSnapshotSignal()?.id).toBe('user-1');
+    expect(tenantSubscriptionSignal()?.plan.slug).toBe('free');
+    expect(tenantEntitlementsSignal()).toEqual({ pro_page: false });
+    expect(useBridge().entitlements.can('pro_page')).toBe(false);
+    // Empty → filled is hydration, not a change: the delivered push would not
+    // have re-run the route guard or refreshed the token, so neither does this.
+    expect(reasons).toEqual([]);
+    expect(auth.refreshCalls).toBe(0);
+    expect(reauthCalls).toBe(0);
+  });
+
+  it('a store that already held plan A and now reads B is a change — reported as the push would have', async () => {
+    // beforeEach delivered "Free"; the upgrade push was then lost.
+    server = { plan: { slug: 'pro', name: 'Pro' }, status: 'active', entitlements: { pro_page: true } };
+    auth.tokens.set({ accessToken: token() });
+    await start();
+    connectOk(lastWs());
+    await settle();
+
+    expect(tenantSubscriptionSignal()?.plan.slug).toBe('pro');
+    // Not 'reconnect': this was no reconnect. Plan wins over entitlements.
+    expect(reasons).toEqual(['subscription.plan_changed']);
+    expect(auth.refreshCalls).toBe(1); // TBP-654 — the token carrying Pro
+  });
+
+  it('does not refresh tokens, reauthorize or report a change when nothing moved', async () => {
+    auth.tokens.set({ accessToken: token() }); // stores already match the server
+    await start();
+    connectOk(lastWs());
+    await settle();
+
+    expect(catchUpCalls).toContain('/session/init');
+    expect(auth.refreshCalls).toBe(0);
+    expect(reauthCalls).toBe(0);
+    expect(reasons).toEqual([]);
+  });
+
+  it('a signed-out first connect makes no requests', async () => {
+    __resetSnapshotStores();
+    await start();
+    connectOk(lastWs());
+    await settle();
+    expect(catchUpCalls).toEqual([]);
+    expect(tenantIdSignal()).toBeNull();
+  });
+
+  it('an open storm ends with the answer fetched for the newest socket', async () => {
+    __resetSnapshotStores();
+    auth.tokens.set({ accessToken: token() });
+    await start();
+    let releaseFirst!: () => void;
+    const first = new Promise<void>((r) => (releaseFirst = r));
+    hold = (path) => (path === '/session/init' ? first : Promise.resolve());
+    connectOk(lastWs()); // first connect: its snapshot read is held with "Free"
+    await settle();
+    hold = null;
+    server = { plan: { slug: 'pro', name: 'Pro' }, status: 'active', entitlements: { pro_page: true } };
+    lastWs().close(1006);
+    await settle(40);
+    connectOk(lastWs()); // the newer open reads "Pro"
+    await settle();
+    releaseFirst(); // the stale answer lands last
+    await settle();
+
+    expect(tenantSubscriptionSignal()?.plan.slug).toBe('pro');
+    expect(tenantEntitlementsSignal()).toEqual({ pro_page: true });
+  });
+
+  it('stop() while a catch-up is in flight → its answer is dropped', async () => {
+    __resetSnapshotStores();
+    auth.tokens.set({ accessToken: token() });
+    await start();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    hold = () => gate;
+    connectOk(lastWs());
+    await settle();
+    await runtime.stop();
+    release();
+    await settle();
+    expect(tenantIdSignal()).toBeNull();
+    expect(reasons).toEqual([]);
+  });
+});
+
+describe('every open re-reads the quota metrics already hydrated (TBP-686)', () => {
+  const snap = (used: number) =>
+    ({ metric: 'ai_completions', used, limit: 100, remaining: 100 - used, warningLevel: null });
+
+  it('re-reads only hydrated metrics and applies the answers to the store', async () => {
+    const quotas = useBridge().quotas;
+    quotas.applyInitialSnapshot('ai_completions', snap(10));
+    quotaServer = { ai_completions: snap(42), never_read: snap(5) };
+    const t = token();
+    auth.tokens.set({ accessToken: t });
+    await start();
+    connectOk(lastWs());
+    await settle();
+
+    const quotaCalls = catchUpCalls.filter((p) => p.startsWith('/usage/quota/'));
+    expect(quotaCalls).toEqual(['/usage/quota/ai_completions']);
+    expect(catchUpHeaders['/usage/quota/ai_completions']['Authorization']).toBe(`Bearer ${t}`);
+    expect(catchUpHeaders['/usage/quota/ai_completions']['x-app-id']).toBe('app-1');
+    expect(quotas.get('ai_completions')?.used).toBe(42);
+    expect(quotas.get('never_read')).toBeUndefined();
+  });
+
+  it('a push that lands while the GET is in flight wins', async () => {
+    const quotas = useBridge().quotas;
+    quotas.applyInitialSnapshot('ai_completions', snap(10));
+    quotaServer = { ai_completions: snap(42) };
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    hold = (path) => (path.startsWith('/usage/quota/') ? gate : Promise.resolve());
+    auth.tokens.set({ accessToken: token() });
+    await start();
+    connectOk(lastWs());
+    await settle();
+
+    quotas.applyQuotaUpdated({ ...snap(77), kind: 'quota.updated' } as never); // newer than the GET
+    release();
+    await settle();
+    expect(quotas.get('ai_completions')?.used).toBe(77);
+  });
+
+  it('a failed quota read keeps the cached value', async () => {
+    const quotas = useBridge().quotas;
+    quotas.applyInitialSnapshot('ai_completions', snap(10));
+    quotaServer = {}; // 404
+    auth.tokens.set({ accessToken: token() });
+    await start();
+    connectOk(lastWs());
+    await settle();
+    expect(catchUpCalls).toContain('/usage/quota/ai_completions');
+    expect(quotas.get('ai_completions')?.used).toBe(10);
+  });
+
+  it('no metric hydrated → no quota request at all', async () => {
+    auth.tokens.set({ accessToken: token() });
+    await start();
+    connectOk(lastWs());
+    await settle();
+    expect(catchUpCalls).toContain('/session/init');
+    expect(catchUpCalls.some((p) => p.startsWith('/usage/quota/'))).toBe(false);
   });
 });

@@ -9,9 +9,10 @@
  * exposed read-only via `.asReadonly()`.
  *
  * These signals mirror the wire shape produced by bridge-api's
- * SessionSnapshotService and are written exactly once per channel-subscribe
- * (initial connect AND every reconnect) by the runtime. Consumers read them
- * via the unified `BridgeService` surface.
+ * SessionSnapshotService and are written on every channel-subscribe (initial
+ * connect AND every reconnect) by the runtime — from the pushed snapshot and
+ * from the `GET /session/init` catch-up that repairs a lost one (TBP-686).
+ * Consumers read them via the unified `BridgeService` surface.
  *
  * Initial state is `null` for every slice. The first paint reads `null` until
  * the channel connects and the snapshot lands.
@@ -125,6 +126,45 @@ export function applyEntitlementsChanged(msg: { entitlements?: unknown } | null 
   const map = msg?.entitlements;
   if (!map || typeof map !== 'object' || Array.isArray(map)) return;
   _tenantEntitlements.set({ ...(map as Record<string, boolean>) });
+}
+
+/**
+ * TBP-686 — apply a `GET /session/init` answer fetched to catch up after a
+ * socket opened, and report what it changed. The pushed `session.snapshot` it
+ * replaces can be lost (on the first connect as well as on a reconnect), and
+ * the caller has to know whether the plan or the entitlements actually moved
+ * so it can re-run the route guard the way the lost push would have — and
+ * leave it alone when nothing did.
+ *
+ * A slice that was empty before is hydration, not a change: the stores are
+ * written, but it is not reported. A delivered push never reports a change
+ * either, and the catch-up must not do more than the push it replaces —
+ * otherwise every first connect whose push was lost would notify the route
+ * guard and refresh the token. Never throws.
+ */
+export function applyCatchUpSnapshot(data: SessionSnapshotData): {
+  planChanged: boolean;
+  entitlementsChanged: boolean;
+} {
+  const subBefore = _tenantSubscription();
+  const entBefore = _tenantEntitlements();
+  applySessionSnapshot(data);
+  const subAfter = _tenantSubscription();
+  const entAfter = _tenantEntitlements();
+  return {
+    planChanged:
+      subBefore != null &&
+      (subBefore.plan?.slug !== subAfter?.plan?.slug || subBefore.status !== subAfter?.status),
+    entitlementsChanged: entBefore != null && !sameFlags(entBefore, entAfter),
+  };
+}
+
+function sameFlags(a: Record<string, boolean> | null, b: Record<string, boolean> | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  return keys.every((k) => a[k] === b[k]);
 }
 
 /** Synchronous read of the current entitlements map (drives `can()`). */

@@ -82,6 +82,13 @@ export class SetupPasskeyPageComponent {
 }
 ```
 
+Register the page at `auth/setup-passkey/:token`, the address the passkey setup email links to. The token is a route parameter, not a query parameter:
+
+```typescript
+// src/app/app.routes.ts
+{ path: 'auth/setup-passkey/:token', component: SetupPasskeyPageComponent },
+```
+
 ## PasskeyRequestSetupLink
 
 An email form that requests a passkey setup link be sent to the user.

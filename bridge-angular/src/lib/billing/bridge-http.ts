@@ -16,14 +16,15 @@
  *      or `FEATURE_NOT_IN_PLAN`, open the upgrade dialog. The error still
  *      reaches the caller unchanged.
  */
-import { HttpErrorResponse, type HttpEvent, type HttpHandlerFn, type HttpInterceptorFn, type HttpRequest } from '@angular/common/http';
+import { HttpErrorResponse, HttpResponse, type HttpEvent, type HttpHandlerFn, type HttpInterceptorFn, type HttpRequest } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { from, throwError, type Observable } from 'rxjs';
-import { catchError, switchMap } from 'rxjs/operators';
+import { catchError, switchMap, tap } from 'rxjs/operators';
 import { BridgeConfigService } from '../config/bridge-config.service';
 import { PRODUCTION_API_BASE_URL } from '../config/resolve-config';
 import { AuthService } from '../shared/services/auth.service';
 import { observeRefusalBody, watchesOrigin } from './quota-refusal';
+import { USAGE_COUNTED_HEADER, noteBackendCounted } from './double-count-warning';
 
 function pageOrigin(): string | undefined {
   try {
@@ -98,8 +99,16 @@ export const bridgeInterceptor: HttpInterceptorFn = (
     }
   };
 
+  // Dev-only: the backend says it counted a metric (bridge-nestjs outside production).
+  const noteCounted = (event: unknown): void => {
+    if (event instanceof HttpResponse || event instanceof HttpErrorResponse) {
+      noteBackendCounted(event.headers?.get(USAGE_COUNTED_HEADER));
+    }
+  };
+
   const sent = tokenOf();
   return next(withToken(sent)).pipe(
+    tap<HttpEvent<unknown>>({ next: noteCounted, error: noteCounted }),
     catchError((err: unknown) => {
       // A token that expired mid-session is not an error the page handles:
       // refresh once and retry. Only when we sent one and the caller did not
@@ -110,6 +119,7 @@ export const bridgeInterceptor: HttpInterceptorFn = (
             const freshToken = fresh?.accessToken ?? tokenOf();
             if (!freshToken || freshToken === sent) return throwError(() => err);
             return next(withToken(freshToken)).pipe(
+              tap<HttpEvent<unknown>>({ next: noteCounted, error: noteCounted }),
               catchError((retryErr: unknown) => {
                 observe402(retryErr);
                 return throwError(() => retryErr);
@@ -165,6 +175,11 @@ export async function bridgeFetch(input: RequestInfo | URL, init?: RequestInit):
     if (freshToken && freshToken !== sentToken) response = await fetch(input, withToken(freshToken));
   }
 
+  try {
+    noteBackendCounted(response.headers?.get(USAGE_COUNTED_HEADER));
+  } catch {
+    /* no headers — nothing to note */
+  }
   if (response.status === 402) {
     try {
       const body: unknown = await response.clone().json();

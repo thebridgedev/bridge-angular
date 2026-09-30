@@ -149,6 +149,12 @@ type UiState =
           <div class="bridge-alert bridge-alert-error" role="alert">{{ pickError() }}</div>
         }
 
+        @if (successNotice()) {
+          <div class="bridge-plan-success" data-bridge-plan-success role="status">
+            <div class="bridge-alert bridge-alert-success">{{ successNotice() }}</div>
+          </div>
+        }
+
         @if (uiState() === 'payment-failed') {
           <div data-bridge-plan-payment-failed class="bridge-plan-payment-failed">
             <div class="bridge-alert bridge-alert-error" role="alert">
@@ -265,6 +271,45 @@ type UiState =
             }
           </div>
         }
+      }
+
+      @if (confirmTarget(); as target) {
+        <div
+          class="bridge-plan-confirm-backdrop"
+          data-bridge-plan-confirm
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bridge-plan-confirm-title"
+          tabindex="-1"
+        >
+          <div class="bridge-plan-confirm">
+            <h3 id="bridge-plan-confirm-title" class="bridge-plan-confirm-title">Change plan?</h3>
+            <p class="bridge-plan-confirm-body">
+              Switch from <strong>{{ currentPlanName() }}</strong> to
+              <strong>{{ target.plan.name }}</strong> ({{ formatPrice(target.price) }}).
+            </p>
+            <p class="bridge-plan-confirm-note">
+              The change takes effect immediately — any price difference is prorated on your next invoice.
+            </p>
+            @if (confirmError()) {
+              <div class="bridge-alert bridge-alert-error" role="alert">{{ confirmError() }}</div>
+            }
+            <div class="bridge-plan-confirm-actions">
+              <button type="button" class="bridge-btn-secondary" [disabled]="confirmBusy()" (click)="confirmTarget.set(null)">
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="bridge-btn-primary"
+                data-bridge-plan-confirm-btn
+                [disabled]="confirmBusy()"
+                (click)="confirmPlanChange()"
+              >
+                {{ confirmBusy() ? 'Switching…' : 'Confirm change' }}
+              </button>
+            </div>
+          </div>
+        </div>
       }
     </div>
   `,
@@ -414,9 +459,11 @@ export class PlanSelectorComponent implements OnInit {
         await this.authService.loadSubscription();
         this.settle(plan, price);
       } else if (this.status()?.paymentsEnabled) {
-        await bridge.changePlan(plan.key, price);
-        await this.authService.loadSubscription();
-        this.select.emit({ plan, price });
+        // TBP-33 (svelte parity, TBP-515) — the workspace already pays, so the
+        // switch is instant with no Stripe page in between: ask first. The
+        // change itself runs in confirmPlanChange().
+        this.confirmError.set(null);
+        this.confirmTarget.set({ plan, price });
       } else {
         // Route Stripe's return through the OAuth callback so it can confirm the
         // session, refresh tokens, and reload the subscription before landing on
@@ -470,6 +517,48 @@ export class PlanSelectorComponent implements OnInit {
       /* not bootstrapped */
     }
     return `${window.location.origin}/auth/oauth-callback`;
+  }
+
+  // ── Plan-change confirmation (TBP-33) ──────────────────────────────────
+  /** The switch waiting for confirmation, or null. */
+  protected readonly confirmTarget = signal<{ plan: Plan; price: PriceOfferSdk } | null>(null);
+  protected readonly confirmBusy = signal(false);
+  protected readonly confirmError = signal<string | null>(null);
+  protected readonly successNotice = signal<string | null>(null);
+  private successTimer: ReturnType<typeof setTimeout> | undefined;
+
+  protected readonly currentPlanName = computed(() => {
+    const key = this.currentPlanKey();
+    const found = (this.plans() ?? []).find((p) => p.key === key);
+    return found?.name ?? key ?? 'your current plan';
+  });
+
+  protected formatPrice(price: PriceOfferSdk): string {
+    return price.amount === 0
+      ? 'Free'
+      : `${price.amount} ${price.currency.toUpperCase()} / ${price.recurrenceInterval}`;
+  }
+
+  /** Run the confirmed switch. A failure shows inside the dialog, which stays open. */
+  async confirmPlanChange(): Promise<void> {
+    const target = this.confirmTarget();
+    if (!target) return;
+    const { plan, price } = target;
+    this.confirmBusy.set(true);
+    this.confirmError.set(null);
+    try {
+      await this.authService.getBridgeAuth().changePlan(plan.key, price);
+      await this.authService.loadSubscription();
+      this.confirmTarget.set(null);
+      this.successNotice.set(`You're now on ${plan.name} (${this.formatPrice(price)}).`);
+      clearTimeout(this.successTimer);
+      this.successTimer = setTimeout(() => this.successNotice.set(null), 6000);
+      this.select.emit({ plan, price });
+    } catch (err) {
+      this.confirmError.set(err instanceof Error ? err.message : 'Plan change failed');
+    } finally {
+      this.confirmBusy.set(false);
+    }
   }
 
   async selectFree(plan: Plan): Promise<void> {

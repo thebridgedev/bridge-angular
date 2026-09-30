@@ -1,7 +1,7 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { Plan, PriceOfferSdk } from '@nebulr-group/bridge-auth-core';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { AuthService, type SubscriptionState } from '../../shared/services/auth.service';
 import { PlanSelectorComponent } from './plan-selector.component';
 
@@ -171,5 +171,90 @@ describe('PlanSelectorComponent — S2 customisation parity (TBP-744 / TBP-515)'
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
     expect([...el.querySelectorAll('[data-test-card]')].map((n) => n.textContent)).toEqual(['Small:month', 'Big:month']);
+  });
+});
+
+/**
+ * TBP-515 (svelte TBP-33) — a workspace that already pays switches plan
+ * instantly, with no Stripe page in between, so the switch asks first.
+ * Revert-proof: on origin/main a click called changePlan at once.
+ */
+describe('PlanSelectorComponent — plan-change confirmation (TBP-33 parity)', () => {
+  let changePlan: ReturnType<typeof vi.fn>;
+
+  class PayingAuth extends StubAuthService {
+    private readonly _paying = signal<SubscriptionState>({
+      status: { paymentsEnabled: true, plan: 'small' } as unknown as SubscriptionState['status'],
+      plans: [SMALL, BIG],
+      loading: false,
+      error: null,
+    });
+    override readonly subscription = this._paying.asReadonly();
+    override getBridgeAuth(): unknown {
+      return { changePlan };
+    }
+  }
+
+  @Component({
+    standalone: true,
+    imports: [PlanSelectorComponent],
+    template: `<bridge-plan-selector defaultInterval="month" />`,
+  })
+  class ConfirmHost {}
+
+  function pickBig(fixture: { nativeElement: HTMLElement; detectChanges(): void }) {
+    const buttons = [...fixture.nativeElement.querySelectorAll('.bridge-plan-select-btn')] as HTMLButtonElement[];
+    const big = buttons.find((b) => b.textContent?.includes('50 USD'))!;
+    big.click();
+  }
+
+  beforeEach(() => {
+    changePlan = vi.fn(async () => {});
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [ConfirmHost],
+      providers: [{ provide: AuthService, useClass: PayingAuth }],
+    });
+  });
+
+  it('asks before switching, and switches only on confirm', async () => {
+    const fixture = TestBed.createComponent(ConfirmHost);
+    fixture.detectChanges();
+    pickBig(fixture);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    const dialog = el.querySelector('[data-bridge-plan-confirm]');
+    expect(dialog?.textContent).toContain('Switch from Small to Big (50 USD / month)');
+    expect(changePlan).not.toHaveBeenCalled();
+
+    (el.querySelector('[data-bridge-plan-confirm-btn]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(changePlan).toHaveBeenCalledWith('big', expect.objectContaining({ amount: 50 }));
+    expect(el.querySelector('[data-bridge-plan-confirm]')).toBeNull();
+    expect(el.querySelector('[data-bridge-plan-success]')?.textContent).toContain("You're now on Big");
+  });
+
+  it('cancel switches nothing; a failure stays in the dialog', async () => {
+    const fixture = TestBed.createComponent(ConfirmHost);
+    fixture.detectChanges();
+    pickBig(fixture);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const el: HTMLElement = fixture.nativeElement;
+    (el.querySelector('.bridge-plan-confirm-actions .bridge-btn-secondary') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-bridge-plan-confirm]')).toBeNull();
+    expect(changePlan).not.toHaveBeenCalled();
+
+    changePlan.mockRejectedValueOnce(new Error('Card declined'));
+    pickBig(fixture);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    (el.querySelector('[data-bridge-plan-confirm-btn]') as HTMLButtonElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(el.querySelector('[data-bridge-plan-confirm]')?.textContent).toContain('Card declined');
   });
 });

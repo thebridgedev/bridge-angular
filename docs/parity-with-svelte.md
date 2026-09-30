@@ -50,7 +50,7 @@ Legend: **present** (already on `main` before TBP-744) · **added** (TBP-744 / t
 | `emptyState`, `loadingState` snippets | `emptyStateTemplate`, `loadingStateTemplate` | present |
 | Interval tabs, `defaultInterval`, cheapest-first, feature list | same | added |
 | Free pick goes on to `successRedirect` (TBP-762) | same, unless `(select)` is observed | added |
-| Plan-change confirmation dialog (TBP-33) | not ported | gap — a paying workspace’s switch still runs on click; noted on TBP-515 |
+| Plan-change confirmation dialog (TBP-33) | same "Change plan?" dialog | added |
 | `<BridgeSubscriptionStatus>`, `<BridgeBillingNotice>`, `<BridgePaywall>`, `<BridgeQuotaBanner>` | same | present |
 | Level 0: global `fetch` wrapper + `bridgeFetch` → upgrade dialog on `402` | `bridgeInterceptor` (HttpClient) + `bridgeFetch` | added — **different**: Angular apps call APIs through `HttpClient`; an interceptor is the idiom, and it sends the token only to watched origins |
 | `<BridgeUpgradeDialog>`, `billing.upgradeDialog` (`false` / component), `billing.apiOrigins` | `<bridge-upgrade-dialog>`, same options | added |
@@ -63,7 +63,7 @@ Legend: **present** (already on `main` before TBP-744) · **added** (TBP-744 / t
 | `$entitlements` store (exception) | `injectEntitlements()` → `Signal<EntitlementsState>` | added |
 | Dev note on direct plan checks (TBP-705) | same | added |
 | `bridge.usage.report / set / getQueueStatus` | `BridgeService.usage` | added |
-| Dev warning when backend and page count the same metric (`X-Bridge-Usage-Counted`) | not ported | gap — development-only diagnostic; noted on TBP-515 |
+| Dev warning when backend and page count the same metric (`X-Bridge-Usage-Counted`) | same, read by `bridgeInterceptor` / `bridgeFetch` | added |
 
 ## Styling
 
@@ -86,4 +86,4 @@ Legend: **present** (already on `main` before TBP-744) · **added** (TBP-744 / t
 
 ## Tests
 
-Every row marked **added** has vitest coverage in `bridge-angular/src/lib/**/*.spec.ts`: `routing/ten-line-routing.spec.ts`, `guards/ten-line-guard.spec.ts`, `billing/plan-limits.spec.ts`, `config/resolve-config.spec.ts`, `styles-tokens.spec.ts`, and the S2 block of `components/subscription/plan-selector.component.spec.ts`.
+Every row marked **added** has vitest coverage in `bridge-angular/src/lib/**/*.spec.ts`: `routing/ten-line-routing.spec.ts`, `guards/ten-line-guard.spec.ts`, `billing/plan-limits.spec.ts`, `config/resolve-config.spec.ts`, `styles-tokens.spec.ts`, `billing/double-count-warning.spec.ts`, and the S2 and confirmation blocks of `components/subscription/plan-selector.component.spec.ts`.

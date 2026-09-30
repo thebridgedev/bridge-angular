@@ -16,6 +16,7 @@
 import { Injectable, inject, type Signal } from '@angular/core';
 import type { BridgeAuth } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../shared/services/auth.service';
+import { noteBrowserCount } from '../billing/double-count-warning';
 import type {
   EvalContext,
   FlagEvalResult,
@@ -98,9 +99,14 @@ export class BridgeService {
 
   /** Browser usage reporting — `bridge.usage.report(metric)` / `.set(metric, n)`. */
   readonly usage: BridgeUsageSurface = {
-    report: (metric, value, idempotencyKey) =>
-      this.authService.getBridgeAuth().usage.report(metric, value, idempotencyKey),
-    set: (metric, value) => this.authService.getBridgeAuth().usage.set(metric, value),
+    report: (metric, value, idempotencyKey) => {
+      noteBrowserCount(metric); // dev-only: warn when the backend counts it too
+      this.authService.getBridgeAuth().usage.report(metric, value, idempotencyKey);
+    },
+    set: (metric, value) => {
+      noteBrowserCount(metric);
+      return this.authService.getBridgeAuth().usage.set(metric, value);
+    },
     getQueueStatus: () => this.authService.getBridgeAuth().usage.getQueueStatus(),
   };
 

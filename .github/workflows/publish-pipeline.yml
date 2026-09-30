@@ -20,4 +20,8 @@ jobs:
       working-directory: bridge-angular
       install-command: 'npm install'
       build-command: 'npm run build'
+      # ng-packagr writes the library to bridge-angular/dist; the source folder
+      # above it is not importable (TBP-744).
+      publish-directory: dist
+      pack-check-command: node "$GITHUB_WORKSPACE/scripts/check-pack.mjs" .
       setup-bun: false

@@ -25,6 +25,7 @@ jobs:
           npm install
           npm run build
           cd dist
+          node ../../scripts/check-pack.mjs .
           npm pack
           mv nebulr-group-bridge-angular-*.tgz ../../install-test-pkg.tgz
 

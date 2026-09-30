@@ -8,10 +8,27 @@
  *
  * Reactive translation (§5.1): svelte `$state` → signals; `onMount(loadData)` →
  * `ngOnInit`.
+ *
+ * TBP-763 — with `seatsMetric` (the plan limit that counts seats, e.g.
+ * `'seats'`), Invite stops at the plan's limit with a line saying why, an
+ * invite of several addresses cannot jump past it, and an invite, removal or
+ * enable/disable re-reads the seat count. Without it, nothing is read.
  */
-import { Component, EventEmitter, Input, OnInit, Output, inject, signal } from '@angular/core';
-import type { TeamUser } from '@nebulr-group/bridge-auth-core';
+import {
+  Component,
+  EventEmitter,
+  Input,
+  OnDestroy,
+  OnInit,
+  Output,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
+import type { QuotaSnapshot, TeamUser } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../../shared/services/auth.service';
+import { createQuotaSignal, type BillingSignal } from '../../core/billing-signals';
+import { seatsAtLimitMessage, seatsChanged, seatsLeft } from './seats';
 import { AuthAlertComponent } from '../sdk-auth/shared/alert.component';
 import { AuthSpinnerComponent } from '../sdk-auth/shared/spinner.component';
 import { TeamAddUserDialogComponent } from './team-add-user-dialog.component';
@@ -34,10 +51,18 @@ import { TeamUserActionsMenuComponent } from './team-user-actions-menu.component
     <div [class]="className" [style]="style" data-bridge-team-users>
       <div class="bridge-team-users-header">
         <h3 class="bridge-team-users-title">Team Members</h3>
-        <button type="button" class="bridge-btn bridge-btn-primary" (click)="showAddDialog.set(true)">
+        <button
+          type="button"
+          class="bridge-btn bridge-btn-primary"
+          [disabled]="seatsFull()"
+          (click)="showAddDialog.set(true)"
+        >
           Add Member
         </button>
       </div>
+      @if (seatsFull()) {
+        <p class="bridge-team-seats-limit" data-bridge-seats-limit>{{ seatsLimitMessage() }}</p>
+      }
 
       @if (loading()) {
         <div class="bridge-team-loading">
@@ -49,7 +74,12 @@ import { TeamUserActionsMenuComponent } from './team-user-actions-menu.component
       } @else if (users().length === 0) {
         <div class="bridge-team-empty">
           <p>No team members yet.</p>
-          <button type="button" class="bridge-btn bridge-btn-primary" (click)="showAddDialog.set(true)">
+          <button
+            type="button"
+            class="bridge-btn bridge-btn-primary"
+            [disabled]="seatsFull()"
+            (click)="showAddDialog.set(true)"
+          >
             Add your first team member
           </button>
         </div>
@@ -100,6 +130,7 @@ import { TeamUserActionsMenuComponent } from './team-user-actions-menu.component
 
     <bridge-team-add-user-dialog
       [open]="showAddDialog()"
+      [seatsLeft]="seatsLeftNow()"
       (close)="showAddDialog.set(false)"
       (added)="onUsersAdded($event)"
     />
@@ -135,10 +166,27 @@ import { TeamUserActionsMenuComponent } from './team-user-actions-menu.component
     />
   `,
 })
-export class TeamUserListComponent implements OnInit {
+export class TeamUserListComponent implements OnInit, OnDestroy {
   @Input() className = '';
   @Input() style = '';
+  /**
+   * TBP-763 — the plan limit that counts seats (e.g. `'seats'`, set up as a
+   * gauge Bridge counts from membership). With it, Invite stops at the plan's
+   * limit and team changes re-read the seat count.
+   */
+  @Input() seatsMetric?: string;
   @Output() error = new EventEmitter<Error>();
+
+  private readonly _seats = signal<BillingSignal<QuotaSnapshot | undefined> | null>(null);
+  /** The seat quota; undefined while loading, with no limit, or without `seatsMetric`. */
+  private readonly seatsQuota = computed(() => this._seats()?.value());
+  /** Seats left, or null when there is no cap to enforce (see `seatsLeft`). */
+  protected readonly seatsLeftNow = computed(() => seatsLeft(this.seatsQuota()));
+  protected readonly seatsFull = computed(() => {
+    const left = this.seatsLeftNow();
+    return left !== null && left <= 0;
+  });
+  protected readonly seatsLimitMessage = computed(() => seatsAtLimitMessage(this.seatsQuota()));
 
   protected readonly users = signal<TeamUser[]>([]);
   protected readonly roles = signal<string[]>([]);
@@ -167,6 +215,13 @@ export class TeamUserListComponent implements OnInit {
   }
 
   async ngOnInit(): Promise<void> {
+    if (this.seatsMetric) {
+      try {
+        this._seats.set(createQuotaSignal(this.seatsMetric));
+      } catch {
+        // Billing surface unavailable — the page works without the seat check.
+      }
+    }
     this.loading.set(true);
     this.loadError.set(null);
     try {
@@ -184,6 +239,10 @@ export class TeamUserListComponent implements OnInit {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  ngOnDestroy(): void {
+    this._seats()?.destroy();
   }
 
   openEdit(user: TeamUser): void {
@@ -218,10 +277,13 @@ export class TeamUserListComponent implements OnInit {
 
   onUsersAdded(added: TeamUser[]): void {
     this.users.update((prev) => [...prev, ...added]);
+    seatsChanged(this.seatsMetric);
   }
 
   onUserUpdated(updated: TeamUser): void {
     this.users.update((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
+    // Enabling or disabling someone moves the seat count.
+    seatsChanged(this.seatsMetric);
   }
 
   async confirmDelete(): Promise<void> {
@@ -232,6 +294,7 @@ export class TeamUserListComponent implements OnInit {
       const bridge = this.authService.getBridgeAuth();
       await bridge.team.deleteUser(target.id);
       this.users.update((prev) => prev.filter((u) => u.id !== target.id));
+      seatsChanged(this.seatsMetric);
       this.closeDelete();
     } catch (err) {
       const e = err instanceof Error ? err : new Error('Failed to delete user');

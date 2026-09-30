@@ -81,7 +81,7 @@ export class TeamTabBarDirective {}
 
       <div class="bridge-team-tab-content">
         @if (activeTab() === 'users') {
-          <bridge-team-user-list (error)="onError($event)" />
+          <bridge-team-user-list [seatsMetric]="seatsMetric" (error)="onError($event)" />
         } @else if (activeTab() === 'profile') {
           <bridge-team-profile-form (error)="onError($event)" />
         } @else if (activeTab() === 'workspace') {
@@ -102,6 +102,11 @@ export class TeamManagementPanelComponent {
 
   @Input() showProfileTab = true;
   @Input() showWorkspaceTab = true;
+  /**
+   * TBP-763 — the plan limit that counts seats (e.g. `'seats'`, set up as a
+   * gauge counted from membership). With it, Invite stops at the plan's limit.
+   */
+  @Input() seatsMetric?: string;
 
   @Output() error = new EventEmitter<Error>();
 

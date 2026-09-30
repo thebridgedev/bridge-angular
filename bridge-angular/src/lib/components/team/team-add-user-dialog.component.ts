@@ -23,6 +23,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import type { TeamUser } from '@nebulr-group/bridge-auth-core';
+import { inviteSeatError } from './seats';
 import { AuthService } from '../../shared/services/auth.service';
 import { AuthAlertComponent } from '../sdk-auth/shared/alert.component';
 
@@ -97,6 +98,13 @@ export class TeamAddUserDialogComponent implements AfterViewInit, OnDestroy {
   }
   private _open = false;
 
+  /**
+   * TBP-763 — seats left on the plan. An invite of more addresses than this is
+   * refused here, before Bridge (whose invite API does not check the limit)
+   * adds anyone. `null`: no check.
+   */
+  @Input() seatsLeft: number | null = null;
+
   @Output() close = new EventEmitter<void>();
   @Output() added = new EventEmitter<TeamUser[]>();
 
@@ -138,6 +146,11 @@ export class TeamAddUserDialogComponent implements AfterViewInit, OnDestroy {
       .filter(Boolean);
     if (emails.length === 0) {
       this.error.set('Please enter at least one email address.');
+      return;
+    }
+    const seatError = inviteSeatError(emails.length, this.seatsLeft);
+    if (seatError) {
+      this.error.set(seatError);
       return;
     }
     this.loading.set(true);

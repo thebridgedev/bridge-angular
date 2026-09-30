@@ -11,6 +11,7 @@ A drop-in panel for managing team members, team profile, and workspace settings.
 | `defaultTab` | `'users' \| 'profile' \| 'workspace'` | `'users'` | Which tab is active by default |
 | `showProfileTab` | `boolean` | `true` | Show the profile tab |
 | `showWorkspaceTab` | `boolean` | `true` | Show the workspace tab |
+| `seatsMetric` | `string` | (none) | The plan limit that counts seats, e.g. `"seats"` (a gauge counted from membership). With it, Invite stops at the plan's limit and says why; without it, the page does not check seats. `<bridge-team-user-list>` takes it too |
 | `(error)` | `EventEmitter<Error>` | (none) | Called on any error |
 
 **Usage:**

@@ -73,7 +73,7 @@ Ask one question first: **does this action call your server?**
 - **It calls your backend:** the backend handler counts it and refuses at the limit. The frontend shows the count and the upgrade dialog, and does not count the same metric again.
 - **It happens in the browser** and never reaches a server of yours: the browser counts it (`inject(BridgeService).usage.report('exports')`, or `.usage.set('projects', n)` for a gauge) and `<bridge-quota-gate>` stops the button at the limit. That is a complete, first-class setup.
 
-Never both for one metric: it would be counted twice.
+Never both for one metric: it would be counted twice. In development the console warns once when it happens (bridge-nestjs marks a counting response with `X-Bridge-Usage-Counted`, which `bridgeInterceptor` and `bridgeFetch` read; nothing is sent or printed in production).
 
 ## 2. A POST increments the limit
 

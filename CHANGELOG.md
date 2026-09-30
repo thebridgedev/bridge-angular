@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `hostedUrl` config option, derived from `apiBaseUrl` on Bridge's own domains, and passed to auth-core — a stage app's hosted sign-in no longer opens on production. `resolveBridgeConfig()` / `hostedUrlFor()` exported.
 - `<bridge-plan-selector>` (TBP-515 S2 parity): `planDescriptionTemplate`, `planFooterTemplate`, `interval` in the `planCardTemplate` context, `defaultInterval` and interval tabs, cheapest-first ordering, the plan's feature list, and "Manage billing" opens the Stripe portal.
 - `BridgeService.usage` (`report` / `set` / `getQueueStatus`) — browser usage counting, parity with svelte's `bridge.usage`.
+- `<bridge-plan-selector>` asks before switching a workspace that already pays (svelte TBP-33): a "Change plan?" dialog names both plans and the price; the switch runs only on confirm, a failure shows inside the dialog, and success shows a notice. **Behaviour change:** a click no longer switches the plan straight away.
+- Development-only warning when a metric is counted twice — by the backend (`X-Bridge-Usage-Counted`, read by `bridgeInterceptor` / `bridgeFetch`) and by the page (`BridgeService.usage`). Nothing is recorded or printed in production.
 - `learning/mechanisms.md` and `docs/parity-with-svelte.md`.
 
 ### Changed — BREAKING

@@ -40,7 +40,7 @@ export class SubscriptionComponent {}
 Under the hood, a pick branches on the price and the workspace's payment state:
 
 - `price.amount === 0` (and no metered cost) → calls `selectFreePlan`, refreshes the subscription state, then goes to `successRedirect`
-- paid + `paymentsEnabled` → calls `changePlan`, refreshes the subscription state
+- paid + `paymentsEnabled` → asks first ("Change plan?" naming both plans and the price, since the switch is instant), then calls `changePlan` on confirm and refreshes the subscription state
 - paid + no payment method yet → calls `startCheckout`, launches Stripe Checkout
 
 > **Framework note:** The selector routes Stripe's return through

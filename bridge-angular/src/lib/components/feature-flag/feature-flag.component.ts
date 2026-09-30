@@ -34,6 +34,16 @@
  *       @if (reason === 'plan') { <a routerLink="/billing">Upgrade for reports</a> }
  *     </p>
  *   </bridge-feature-flag>
+ *
+ * TBP-744 — `upgrade` (opt-in, parity with svelte's `upgrade` prop): with no
+ * fallback, a feature that is off because of the plan renders a small
+ * "Upgrade to use this" button in its place; clicking it opens the upgrade
+ * dialog. The fallback context also carries `openUpgrade()` for a custom
+ * prompt. Nothing opens by itself — only a click does.
+ *
+ *   <bridge-feature-flag key="analytics" [upgrade]="true">
+ *     <a routerLink="/analytics">Analytics</a>
+ *   </bridge-feature-flag>
  */
 import {
   Component,
@@ -48,6 +58,7 @@ import {
 import { CommonModule } from '@angular/common';
 import type { EvalContext, FlagEvalResult, FlagOffReason } from '@nebulr-group/bridge-auth-core';
 import { BridgeService } from '../../core/bridge.service';
+import { openFeatureUpgrade } from '../../billing/quota-refusal';
 
 /** TBP-756 — what a `<bridge-feature-flag>` fallback learns about why the feature is off. */
 export interface FeatureFlagFallbackContext<T = unknown> {
@@ -58,6 +69,8 @@ export interface FeatureFlagFallbackContext<T = unknown> {
   reason: FlagOffReason | undefined;
   /** With `reason: 'plan'`, the plan feature the rule asks for. */
   feature: string | undefined;
+  /** TBP-744 — open the upgrade dialog for this feature. Call it from a click. */
+  openUpgrade: () => void;
 }
 
 /** Structural directive marking the fallback slot of `<bridge-feature-flag>`. */
@@ -88,6 +101,15 @@ export class BridgeFeatureFlagFallbackDirective {
         [ngTemplateOutlet]="fallback.templateRef"
         [ngTemplateOutletContext]="offContext()"
       ></ng-container>
+    } @else if (upgrade && offContext().reason === 'plan') {
+      <button
+        type="button"
+        class="bridge-btn bridge-btn-secondary bridge-feature-upgrade"
+        [attr.data-bridge-feature-upgrade]="key"
+        (click)="offContext().openUpgrade()"
+      >
+        Upgrade to use this
+      </button>
     }
   `,
 })
@@ -100,11 +122,20 @@ export class FeatureFlagComponent<T = boolean> {
   @Input({ required: true }) set key(value: string) {
     this._key.set(value);
   }
+  get key(): string {
+    return this._key();
+  }
 
   /** Value when no rule matched / cache cold. */
   @Input() set defaultValue(value: T) {
     this._defaultValue.set(value);
   }
+
+  /**
+   * TBP-744 — opt in to an inline "Upgrade to use this" prompt when the feature
+   * is off because of the plan and there is no fallback template.
+   */
+  @Input() upgrade = false;
 
   /** Optional per-call EvalContext (dev-supplied attributes win on collision). */
   @Input() set context(value: Partial<EvalContext> | undefined) {
@@ -134,7 +165,14 @@ export class FeatureFlagComponent<T = boolean> {
     });
     this.offContext = computed(() => {
       const r = this.result();
-      return { $implicit: r.value, value: r.value, reason: r.reason, feature: r.feature };
+      const key = this._key();
+      return {
+        $implicit: r.value,
+        value: r.value,
+        reason: r.reason,
+        feature: r.feature,
+        openUpgrade: () => openFeatureUpgrade({ flag: key, feature: r.feature ?? null }),
+      };
     });
   }
 }

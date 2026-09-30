@@ -3,6 +3,65 @@
 // ============================================================================
 export { provideBridge } from './lib/provide-bridge';
 export { BridgeBootstrapService } from './lib/bootstrap/bridge-bootstrap.service';
+// TBP-744 — explicit option > default, empty = unset, hostedUrl follows apiBaseUrl.
+export { resolveBridgeConfig, hostedUrlFor, PRODUCTION_API_BASE_URL } from './lib/config/resolve-config';
+
+// ============================================================================
+// Ten-line integration (TBP-744) — every sign-in and subscription page from one
+// spread each, plan limits with no page code.
+// ============================================================================
+export {
+  bridgeAuthRoutes,
+  bridgeBillingRoutes,
+  BRIDGE_AUTH_PAGES,
+} from './lib/routing/bridge-routes';
+export type {
+  BridgeAuthPage,
+  BridgeAuthRoutesOptions,
+  BridgeBillingRoutesOptions,
+  BridgeRouteOverride,
+} from './lib/routing/bridge-routes';
+export {
+  BRIDGE_BILLING_PAGES,
+  BRIDGE_BILLING_DEFAULTS,
+  resolveBillingPaths,
+} from './lib/routing/billing-paths';
+export type { BridgeBillingPage, BridgeBillingPaths } from './lib/routing/billing-paths';
+export { BridgeAuthPageComponent } from './lib/components/routes/bridge-auth-page.component';
+export { BridgeBillingPageComponent } from './lib/components/routes/bridge-billing-page.component';
+
+// Level 0 — the upgrade dialog on a plan-limit / plan-feature 402.
+export { bridgeInterceptor, bridgeFetch } from './lib/billing/bridge-http';
+export {
+  quotaRefusal,
+  featureUpgrade,
+  onBridgeQuotaExceeded,
+  openFeatureUpgrade,
+  dismissQuotaRefusal,
+  dismissFeatureUpgrade,
+  parseQuotaRefusal,
+  parseFeatureRefusal,
+} from './lib/billing/quota-refusal';
+export type {
+  BridgeQuotaRefusal,
+  BridgeFeatureUpgrade,
+  BridgeFeatureOffReason,
+} from './lib/billing/quota-refusal';
+export { BridgeUpgradeDialogComponent } from './lib/components/subscription/upgrade-dialog.component';
+export { UpgradeDialogMounter } from './lib/components/subscription/upgrade-dialog.mounter';
+
+// Level 1 — one component or directive.
+export {
+  QuotaGateComponent,
+  QuotaGateDirective,
+  BridgeQuotaAtLimitDirective,
+} from './lib/components/subscription/quota-gate.component';
+export type { QuotaAtLimitContext } from './lib/components/subscription/quota-gate.component';
+export { EntitledDirective } from './lib/components/subscription/entitled.directive';
+
+// Level 2 — your own UI from live signals.
+export { injectQuota, injectEntitlements } from './lib/billing/quota-state';
+export type { QuotaState, EntitlementsState } from './lib/billing/quota-state';
 
 // ============================================================================
 // Unified bridge surface (Phase 4/5 parity with bridge-svelte's `bridge`)
@@ -15,6 +74,7 @@ export { BridgeService } from './lib/core/bridge.service';
 export type {
   BridgeAppSurface,
   BridgeTenantSurface,
+  BridgeUsageSurface,
 } from './lib/core/bridge.service';
 export { BridgeRuntimeService } from './lib/core/bridge-runtime.service';
 export type {
@@ -101,7 +161,13 @@ export { ProfileNameComponent } from './lib/components/profile-name/profile-name
 
 // Subscription / Billing 2.0 drop-in components.
 export { PlanSelectorComponent } from './lib/components/subscription/plan-selector.component';
-export type { PlanCardTemplateContext } from './lib/components/subscription/plan-selector.component';
+export type {
+  PlanCardTemplateContext,
+  PlanPartTemplateContext,
+  BillingInterval,
+} from './lib/components/subscription/plan-selector.component';
+export { BillingPortalButtonComponent } from './lib/components/subscription/billing-portal-button.component';
+export { BridgePaywallPageComponent } from './lib/components/subscription/paywall-page.component';
 export { SubscriptionStatusComponent } from './lib/components/subscription/subscription-status.component';
 export { BillingNoticeComponent } from './lib/components/subscription/billing-notice.component';
 export { PaywallComponent } from './lib/components/subscription/paywall.component';
@@ -194,7 +260,7 @@ export { sha256Email } from './lib/tracking/pii-hashing';
 // ============================================================================
 // Guards
 // ============================================================================
-export { bridgeAuthGuard, BRIDGE_RESTRICTION_STATE_KEY } from './lib/guards/route-guard';
+export { bridgeAuthGuard, BRIDGE_RESTRICTION_STATE_KEY, BRIDGE_PUBLIC_ROUTE } from './lib/guards/route-guard';
 export type {
   RouteGuardConfig,
   RouteRule,
@@ -205,7 +271,7 @@ export type {
 // ============================================================================
 // Types
 // ============================================================================
-export type { BridgeConfig, TokenSet } from './lib/types/config';
+export type { BridgeConfig, TokenSet, BridgeUpgradeDialogInputs } from './lib/types/config';
 export type { Profile, IDToken } from './lib/shared/profile';
 export { transformIDToken } from './lib/shared/profile';
 

@@ -33,6 +33,7 @@ import {
   createSubscriptionSignal,
   type BillingSignal,
 } from '../../core/billing-signals';
+import { BRIDGE_BILLING_DEFAULTS } from '../../routing/billing-paths';
 import { tokenStaleHandlerOf } from '../../core/token-stale';
 
 type Chassis = 'bar' | 'rail' | 'card';
@@ -158,7 +159,7 @@ export class BillingNoticeComponent implements OnInit, OnDestroy {
       return;
     }
     // Default: open the app's billing surface. Destination priority:
-    // `actionHref` input → `billing.manageRoute` config → '/billing'.
+    // `actionHref` input → `billing.manageRoute` config → '/subscription' (TBP-744; was '/billing', a page no guide told anyone to create).
     if (typeof window !== 'undefined') {
       let manageRoute: string | undefined;
       try {
@@ -166,7 +167,7 @@ export class BillingNoticeComponent implements OnInit, OnDestroy {
       } catch {
         // Config not initialized — fall through to the default.
       }
-      window.location.href = this.actionHref ?? manageRoute ?? '/billing';
+      window.location.href = this.actionHref ?? manageRoute ?? BRIDGE_BILLING_DEFAULTS.manageRoute;
     }
   }
 }

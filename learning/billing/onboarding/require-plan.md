@@ -54,62 +54,36 @@ export class AppComponent {}
 
 What the user sees: a workspace with no plan lands on a full-screen modal with the plan picker and cannot get past it. The instant they pick a plan (or return from checkout), the modal disappears and your app renders in its place.
 
-## Method 2: config paywall route
+## Method 2: the paywall route (on by default)
 
-Prefer this when you want the plan picker to be a **real routed page** rather than a modal overlay, for example a dedicated `/plans` onboarding step with its own layout, copy, and URL you can link to.
+With `...bridgeBillingRoutes()` in your router (inside the guarded parent), a workspace with no plan is redirected to **`/subscription/plan`** before a protected page renders — a real routed page with the plan picker. Nothing to configure: the redirect defaults to that page, but only for an app that has plans (an app without billing has only plan-less workspaces and is never redirected).
 
-Set `billing.paywallRoute` in the `BridgeConfig` you pass to `provideBridge` in `app.config.ts`:
+`bridgeAuthGuard()` handles the gate. It redirects only when all of the following hold, so there's no redirect loop and no gate on exempt workspaces:
 
-```ts
-// src/app/app.config.ts
-import { ApplicationConfig } from '@angular/core';
-import { provideRouter } from '@angular/router';
-import { provideBridge, type BridgeConfig } from '@nebulr-group/bridge-angular';
-import { environment } from '../environments/environment';
-import { routes } from './app.routes';
-
-const config: BridgeConfig = {
-  appId: environment.bridgeAppId,
-  billing: {
-    paywallRoute: '/plans',
-  },
-};
-
-export const appConfig: ApplicationConfig = {
-  providers: [provideRouter(routes), provideBridge(config)],
-};
-```
-
-Then render a `<bridge-plan-selector>` at that route:
-
-```ts
-// src/app/pages/plans/plans.component.ts
-import { Component } from '@angular/core';
-import { PlanSelectorComponent } from '@nebulr-group/bridge-angular';
-
-@Component({
-  selector: 'app-plans',
-  standalone: true,
-  imports: [PlanSelectorComponent],
-  template: `
-    <bridge-plan-selector successRedirect="/welcome" cancelRedirect="/plans" />
-  `,
-})
-export class PlansComponent {}
-```
-
-`bridgeAuthGuard()` handles the gate for you: before any page renders it checks the subscription status, and if the authenticated workspace still needs to pick a plan it issues a redirect to `paywallRoute`. It only redirects when all of the following hold, so there's no redirect loop and no gate on exempt workspaces:
-
-- `billing.paywallRoute` is configured
-- the current path isn't already the paywall route
+- the paywall is not turned off (`billing: { paywallRoute: false }`)
+- the app has plans (or you set `paywallRoute` yourself, which always applies)
+- the current path isn't the paywall or the payment-error page
 - the workspace is authenticated but has `shouldSelectPlan: true`
 - the workspace hasn't opted out via `paymentsAutoRedirect: false`
+- the navigation isn't a Stripe/OAuth return on its way through `/auth/oauth-callback`
 
-> **Framework note:** The gate is a route guard, so register it on your routes
-> (e.g. `canActivateChild: [bridgeAuthGuard()]` on your root route group). The
-> guard also exempts an in-flight auth/checkout callback navigation, so a Stripe
-> return can reach `/auth/oauth-callback` and confirm the checkout before
-> `shouldSelectPlan` flips.
+**Your own onboarding page** is an option, never required. Render `<bridge-paywall-page>` at the route of your choice and point the paywall at it:
+
+```ts
+// app.config.ts
+provideBridge({ appId: environment.bridgeAppId, billing: { paywallRoute: '/welcome' } }),
+
+// welcome.component.ts
+@Component({
+  selector: 'app-welcome',
+  standalone: true,
+  imports: [BridgePaywallPageComponent],
+  template: `<bridge-paywall-page heading="Pick a plan to get started"><p>Welcome aboard.</p></bridge-paywall-page>`,
+})
+export class WelcomeComponent {}
+```
+
+A completed checkout lands on `/subscription/success`; a cancelled one comes back to the page.
 
 > **Tip:** `<bridge-plan-selector>` is the same picker `<bridge-paywall>` renders inside its modal. See [Choose & switch plans](/billing/onboarding/choose-switch-plans/) for its full input table and customization options.
 
@@ -120,18 +94,17 @@ Both methods drive the same underlying flow:
 1. A user signs in to a workspace that has **no active plan** → `shouldSelectPlan` is `true`.
 2. The **gate** engages: the `<bridge-paywall>` modal appears, or `bridgeAuthGuard()` redirects to your `paywallRoute` page.
 3. The user picks a plan from the `<bridge-plan-selector>`:
-   - **Free plan** → activated instantly, no payment. `(select)` fires and the subscription state refreshes.
+   - **Free plan** → activated instantly, no payment. The subscription state refreshes and the picker goes on to `successRedirect` (or fires `(select)` if you listen to it).
    - **Paid plan** → the user is sent to **Stripe Checkout** to capture a payment method.
 4. On successful payment the user returns to your app at **`successRedirect`**; if they cancel, they land on **`cancelRedirect`**.
 5. With a plan now active, `shouldSelectPlan` flips to `false` → the **gate opens** and your app renders.
 
-> **Framework note:** In Angular the Stripe return trip routes through your
-> `/auth/oauth-callback` page carrying `stripe_success` / `stripe_cancel`
-> markers. Your callback handler confirms the session with the Bridge API
-> (`POST /v1/account/stripe/confirm-checkout`), refreshes tokens, reloads the
-> subscription, then redirects to `successRedirect` / `cancelRedirect` (and to
-> your `paymentErrorRoute` if confirmation fails). The SDK's demo app ships a
-> reference `OAuthCallbackComponent` implementing exactly this.
+> **Framework note:** In Angular the Stripe return trip routes through
+> `/auth/oauth-callback` (served by `bridgeAuthRoutes()`) carrying
+> `stripe_success` / `stripe_cancel` markers. It confirms the session with the
+> Bridge API, refreshes tokens, reloads the subscription, then redirects to
+> `successRedirect` / `cancelRedirect` — or to `/subscription/error`
+> (`billing.paymentErrorRoute`) if confirmation fails.
 
 ## Opting out: `paymentsAutoRedirect: false`
 

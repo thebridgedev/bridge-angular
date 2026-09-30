@@ -7,6 +7,7 @@ import { BridgeRuntimeService } from '../core/bridge-runtime.service';
 import { BridgeService } from '../core/bridge.service';
 import { logger, setLoggerConfigGetter } from '../shared/logger';
 import type { BridgeConfig } from '../types/config';
+import { setBridgeFetchAuth } from '../billing/bridge-http';
 
 const ROUTE_RECHECK_DEBOUNCE_MS = 50;
 
@@ -48,13 +49,11 @@ export class BridgeBootstrapService {
   }
 
   async bootstrap(
-    config: BridgeConfig | string,
+    config: Partial<BridgeConfig> | string,
     routeConfig: RouteGuardConfig = { rules: [], defaultAccess: 'protected' },
   ): Promise<void> {
-    const finalConfig = typeof config === 'string' ? { appId: config } : config;
-
     // 1. Initialize Bridge config (route guard rules, logger, derived URLs).
-    this.configService.initConfig(finalConfig, routeConfig);
+    this.configService.initConfig(config, routeConfig);
     setLoggerConfigGetter(() => this.configService.getConfig());
     logger.debug('[BridgeBootstrapService] config initialized');
 
@@ -65,6 +64,9 @@ export class BridgeBootstrapService {
     const authConfig: BridgeAuthConfig = {
       appId: merged.appId,
       apiBaseUrl: merged.apiBaseUrl,
+      // TBP-744 — derived from apiBaseUrl on Bridge's domains, so a stage app's
+      // hosted sign-in no longer opens on production.
+      ...(merged.hostedUrl ? { hostedUrl: merged.hostedUrl } : {}),
       ...(merged.callbackUrl ? { callbackUrl: merged.callbackUrl } : {}),
       ...(merged.defaultRedirectRoute
         ? { defaultRedirectRoute: merged.defaultRedirectRoute }
@@ -73,6 +75,8 @@ export class BridgeBootstrapService {
       debug: !!merged.debug,
     };
     this.authService.initBridge(authConfig);
+    // TBP-744 — `bridgeFetch()` reads the token outside an injection context.
+    setBridgeFetchAuth(this.authService);
     logger.debug('[BridgeBootstrapService] BridgeAuth initialized');
 
     // 3. Refresh tokens for an already-authenticated session (no-op otherwise).

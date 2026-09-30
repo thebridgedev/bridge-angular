@@ -6,6 +6,7 @@ import {
 } from '@angular/core';
 import { BridgeBootstrapService } from './bootstrap/bridge-bootstrap.service';
 import { RealtimeDevBadgeMounter } from './components/developer/realtime-dev-badge.mounter';
+import { UpgradeDialogMounter } from './components/subscription/upgrade-dialog.mounter';
 import type { RouteGuardConfig } from './guards/route-guard';
 import type { BridgeConfig } from './types/config';
 
@@ -17,13 +18,20 @@ import type { BridgeConfig } from './types/config';
  * export const appConfig: ApplicationConfig = {
  *   providers: [
  *     provideRouter(routes),
- *     provideBridge(bridgeConfig, routeConfig),
+ *     provideHttpClient(withInterceptors([bridgeInterceptor])),
+ *     provideBridge({ appId: environment.bridgeAppId, loginRoute: '/auth/login' }),
  *   ],
  * };
  * ```
+ *
+ * Configuration precedence (TBP-744, the same chain as every Bridge plugin with
+ * the environment step empty — Angular has no env-var convention): an option
+ * passed here > the built-in default. An empty string counts as unset. With no
+ * `appId` it throws, naming the option. `hostedUrl` follows `apiBaseUrl` on
+ * Bridge's own domains.
  */
 export function provideBridge(
-  config: BridgeConfig | string,
+  config: Partial<BridgeConfig> | string,
   routeConfig?: RouteGuardConfig,
 ): EnvironmentProviders {
   return makeEnvironmentProviders([
@@ -42,6 +50,16 @@ export function provideBridge(
       provide: APP_BOOTSTRAP_LISTENER,
       useFactory: (mounter: RealtimeDevBadgeMounter) => () => mounter.mount(),
       deps: [RealtimeDevBadgeMounter],
+      multi: true,
+    },
+    // TBP-744 — the upgrade dialog: opens on a plan-limit / plan-feature 402
+    // seen by `bridgeInterceptor` or `bridgeFetch`, a plan-gated route, or a
+    // `<bridge-feature-flag upgrade>` click. `billing.upgradeDialog: false`
+    // turns it off; a component there replaces it.
+    {
+      provide: APP_BOOTSTRAP_LISTENER,
+      useFactory: (mounter: UpgradeDialogMounter) => () => mounter.mount(),
+      deps: [UpgradeDialogMounter],
       multi: true,
     },
   ]);

@@ -14,6 +14,7 @@ import { Component, Input, OnInit, inject, isDevMode } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { BridgeConfigService } from '../../config/bridge-config.service';
 import { resolveBillingPaths } from '../../routing/billing-paths';
+import { routeSegments } from '../../routing/route-path';
 import { logger } from '../../shared/logger';
 import { PlanSelectorComponent } from './plan-selector.component';
 
@@ -42,7 +43,7 @@ export class BridgePaywallPageComponent implements OnInit {
 
   /** This page's path, from the matched route (the router's URL lags during the first navigation). */
   private get here(): string {
-    const segments = this.route?.snapshot.pathFromRoot.flatMap((r) => r.url.map((s) => s.path)) ?? [];
+    const segments = routeSegments(this.route?.snapshot);
     return `/${segments.join('/')}`;
   }
 

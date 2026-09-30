@@ -18,6 +18,7 @@ import {
   type BridgePageOptions,
 } from '../../routing/bridge-routes';
 import { resolveCallbackTarget } from '../../routing/callback';
+import { routeSegments } from '../../routing/route-path';
 import { logger } from '../../shared/logger';
 import { AuthService } from '../../shared/services/auth.service';
 import { ForgotPasswordComponent } from '../sdk-auth/forgot-password.component';
@@ -37,10 +38,7 @@ export function bridgeAuthBase(segments: readonly string[], hasToken: boolean): 
   return kept.length ? `/${kept.join('/')}` : '';
 }
 
-/** The matched path of a route, from the root, as segments (no query). */
-function routeSegments(route: ActivatedRoute): string[] {
-  return route.snapshot.pathFromRoot.flatMap((r) => r.url.map((s) => s.path));
-}
+
 
 @Component({
   selector: 'bridge-auth-page',
@@ -133,7 +131,7 @@ export class BridgeAuthPageComponent implements OnInit {
     redirectTo: '/',
   };
   protected readonly token: string | null = this.route.snapshot.paramMap.get('token');
-  private readonly segments = routeSegments(this.route);
+  private readonly segments = routeSegments(this.route.snapshot);
   protected readonly base = bridgeAuthBase(this.segments, this.token !== null);
 
   /** Hosted mode is "no loginRoute" — the same switch the route guard uses. */

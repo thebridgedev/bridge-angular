@@ -16,6 +16,7 @@ import {
   BRIDGE_PAGE_OPTIONS_DATA,
   type BridgePageOptions,
 } from '../../routing/bridge-routes';
+import { routeSegments } from '../../routing/route-path';
 import { AuthService } from '../../shared/services/auth.service';
 import { BillingPortalButtonComponent } from '../subscription/billing-portal-button.component';
 import { PlanSelectorComponent } from '../subscription/plan-selector.component';
@@ -78,7 +79,7 @@ export class BridgeBillingPageComponent implements OnInit {
 
   /** Links are relative to where the routes live, not hard-coded to /subscription. */
   protected readonly base = (() => {
-    const segments = this.route.snapshot.pathFromRoot.flatMap((r) => r.url.map((s) => s.path));
+    const segments = routeSegments(this.route.snapshot);
     const kept = this.page === 'manage' ? segments : segments.slice(0, -1);
     return kept.length ? `/${kept.join('/')}` : '/';
   })();

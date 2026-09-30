@@ -33,6 +33,7 @@ import {
   createSubscriptionSignal,
   type BillingSignal,
 } from '../../core/billing-signals';
+import { tokenStaleHandlerOf } from '../../core/token-stale';
 
 type Chassis = 'bar' | 'rail' | 'card';
 
@@ -141,6 +142,8 @@ export class BillingNoticeComponent implements OnInit, OnDestroy {
         apiBaseUrl: ctx.apiBaseUrl,
         accessToken: ctx.accessToken,
         appId: ctx.appId,
+        // TBP-762 — a read right after a checkout renews the sign-in and retries.
+        onTokenStale: tokenStaleHandlerOf(bridge),
       });
     }
   }

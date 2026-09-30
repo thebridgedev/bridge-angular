@@ -6,7 +6,7 @@
  * subscription status. Reads auth-core's billing `useBridge().subscription`
  * surface via a signal (§5.1: svelte `$state(snapshot())` + `onMount(subscribe)`
  * → `createSubscriptionSignal()` + `effect`/teardown). Fetches once on mount via
- * `subscription.mount({ apiBaseUrl, accessToken, appId })`.
+ * `subscription.mount({ apiBaseUrl, accessToken, appId, onTokenStale })`.
  */
 import {
   Component,
@@ -22,6 +22,7 @@ import {
   createSubscriptionSignal,
   type BillingSignal,
 } from '../../core/billing-signals';
+import { tokenStaleHandlerOf } from '../../core/token-stale';
 
 @Component({
   selector: 'bridge-subscription-status',
@@ -62,7 +63,8 @@ export class SubscriptionStatusComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this._sub = createSubscriptionSignal();
     const subscription = useBridge().subscription;
-    const ctx = this.authService.getBridgeAuth().getApiContext();
+    const bridge = this.authService.getBridgeAuth();
+    const ctx = bridge.getApiContext();
     if (!ctx.accessToken) {
       subscription.setError('Not authenticated');
       return;
@@ -71,6 +73,8 @@ export class SubscriptionStatusComponent implements OnInit, OnDestroy {
       apiBaseUrl: ctx.apiBaseUrl,
       accessToken: ctx.accessToken,
       appId: ctx.appId,
+      // TBP-762 — a read right after a checkout renews the sign-in and retries.
+      onTokenStale: tokenStaleHandlerOf(bridge),
     });
   }
 

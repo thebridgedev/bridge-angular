@@ -69,6 +69,7 @@ import { bridgeEvents } from './events';
 import { _setRealtimeStatus, _setRealtimeStatusDetail } from './realtime-status';
 import { setPlansLoader } from './dev-attributes';
 import { notifyAllFlagsChanged } from '../flags/registry';
+import { tokenStaleHandlerOf } from './token-stale';
 import {
   clearPendingAuthorizationChange,
   pendingAuthorizationChange,
@@ -417,6 +418,9 @@ export class BridgeRuntimeService {
         apiBaseUrl,
         appId: config.appId,
         accessToken: accessToken ?? null,
+        // TBP-762 — a quota read right after a checkout renews the sign-in and
+        // retries instead of failing on `401 TOKEN_VERSION_STALE`.
+        onTokenStale: this.tokenStaleHandler(),
       });
     } catch {
       /* quota hydration falls back to live pushes only */
@@ -722,6 +726,15 @@ export class BridgeRuntimeService {
       refresh = Promise.reject(err);
     }
     return trackAuthorizationChange(refresh);
+  }
+
+  /** TBP-762 — `BridgeAuth.tokenStaleHandler()`, or undefined before BridgeAuth exists. */
+  private tokenStaleHandler(): (() => Promise<string | null>) | undefined {
+    try {
+      return tokenStaleHandlerOf(this.authService.getBridgeAuth());
+    } catch {
+      return undefined;
+    }
   }
 
   /**

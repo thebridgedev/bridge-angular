@@ -272,8 +272,9 @@ describe('a reconnect caused by reauthorize() catches up (TBP-660)', () => {
     expect(reasons.filter((r) => r === 'reconnect')).toEqual(['reconnect']);
     // TBP-654 — the recovered plan change starts ONE token refresh, so the
     // token carrying the new plan is fetched now rather than on the next
-    // user.state_changed. This stub mints nothing, so no second reauthorize.
-    expect(auth.refreshCalls).toBe(1);
+    // user.state_changed. TBP-700 — plus one reconcile per connect (the first
+    // and this one). This stub mints nothing, so no second reauthorize.
+    expect(auth.refreshCalls).toBe(3);
     expect(reauthCalls).toBe(1);
   });
 
@@ -287,15 +288,21 @@ describe('a reconnect caused by reauthorize() catches up (TBP-660)', () => {
     server = { plan: { slug: 'pro', name: 'Pro' }, status: 'active', entitlements: { pro_page: true } };
     auth.mint = token; // the refresh returns a new token from here on
     await settle();
-    connectOk(lastWs()); // catch-up finds Pro → refresh → new token → reauthorize
+    connectOk(lastWs()); // catch-up finds Pro → refresh → new token
     await settle();
-    connectOk(lastWs()); // catch-up again: nothing moved → no refresh
+    const reauthsAfterRecovery = reauthCalls;
+    const refreshesAfterRecovery = auth.refreshCalls;
+    connectOk(lastWs()); // an open that changes nothing
     await settle();
     connectOk(lastWs());
     await settle();
 
-    expect(auth.refreshCalls).toBe(1);
-    expect(reauthCalls).toBe(2);
+    // Every later open costs its one reconcile refresh (TBP-700) and nothing
+    // else: this stub's tokens carry the same authority, so none of them
+    // replaces the socket, and the plan change is reported once.
+    expect(auth.refreshCalls).toBe(refreshesAfterRecovery + 2);
+    expect(reauthCalls).toBe(reauthsAfterRecovery);
+    expect(reauthCalls).toBeLessThanOrEqual(2);
     expect(reasons.filter((r) => r === 'reconnect')).toEqual(['reconnect']);
   });
 
@@ -303,6 +310,7 @@ describe('a reconnect caused by reauthorize() catches up (TBP-660)', () => {
     auth.tokens.set({ accessToken: token() });
     await start();
     connectOk(lastWs());
+    await settle(); // the first connect's reconcile is done; this rotation is the app's
     setTokens(token());
     await settle();
     connectOk(lastWs());
@@ -328,10 +336,10 @@ describe('a genuine reconnect is unchanged, plus the catch-up (TBP-660)', () => 
     connectOk(lastWs());
     await settle();
 
-    // The reconnect's own refresh, plus the one the recovered plan change
-    // starts (TBP-654). auth-core's refreshTokens() shares one in-flight
-    // request between overlapping calls, so on the wire this is one refresh.
-    expect(auth.refreshCalls).toBe(2);
+    // One reconcile per connect (TBP-700: the first and the reconnect), plus
+    // the refresh the recovered plan change starts (TBP-654). auth-core
+    // shares an in-flight refresh between overlapping calls.
+    expect(auth.refreshCalls).toBe(3);
     // Three for the first connect (TBP-686), three for the reconnect.
     expect(catchUpCalls).toHaveLength(6);
     expect(tenantSubscriptionSignal()?.plan.slug).toBe('pro');
@@ -369,8 +377,9 @@ describe('the first connect catches up on the snapshot the push lost (TBP-686)',
     expect(useBridge().entitlements.can('pro_page')).toBe(false);
     // Empty → filled is hydration, not a change: the delivered push would not
     // have re-run the route guard or refreshed the token, so neither does this.
+    // The one refresh is the connect's user-state reconcile (TBP-700).
     expect(reasons).toEqual([]);
-    expect(auth.refreshCalls).toBe(0);
+    expect(auth.refreshCalls).toBe(1);
     expect(reauthCalls).toBe(0);
   });
 
@@ -385,7 +394,8 @@ describe('the first connect catches up on the snapshot the push lost (TBP-686)',
     expect(tenantSubscriptionSignal()?.plan.slug).toBe('pro');
     // Not 'reconnect': this was no reconnect. Plan wins over entitlements.
     expect(reasons).toEqual(['subscription.plan_changed']);
-    expect(auth.refreshCalls).toBe(1); // TBP-654 — the token carrying Pro
+    // TBP-654 — the token carrying Pro, plus the connect's reconcile (TBP-700).
+    expect(auth.refreshCalls).toBe(2);
   });
 
   it('does not refresh tokens, reauthorize or report a change when nothing moved', async () => {
@@ -395,7 +405,7 @@ describe('the first connect catches up on the snapshot the push lost (TBP-686)',
     await settle();
 
     expect(catchUpCalls).toContain('/session/init');
-    expect(auth.refreshCalls).toBe(0);
+    expect(auth.refreshCalls).toBe(1); // the connect's reconcile only (TBP-700)
     expect(reauthCalls).toBe(0);
     expect(reasons).toEqual([]);
   });

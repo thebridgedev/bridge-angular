@@ -66,6 +66,7 @@ export {
   FeatureFlagComponent,
   BridgeFeatureFlagFallbackDirective,
 } from './lib/components/feature-flag/feature-flag.component';
+export type { FeatureFlagFallbackContext } from './lib/components/feature-flag/feature-flag.component';
 
 // FF 2.0 bootstrap + browser identity storage (advanced / standalone-FF use).
 export {
@@ -193,8 +194,13 @@ export { sha256Email } from './lib/tracking/pii-hashing';
 // ============================================================================
 // Guards
 // ============================================================================
-export { bridgeAuthGuard } from './lib/guards/route-guard';
-export type { RouteGuardConfig, RouteRule, FlagRequirement } from './lib/guards/route-guard';
+export { bridgeAuthGuard, BRIDGE_RESTRICTION_STATE_KEY } from './lib/guards/route-guard';
+export type {
+  RouteGuardConfig,
+  RouteRule,
+  FlagRequirement,
+  BridgeRouteRestriction,
+} from './lib/guards/route-guard';
 
 // ============================================================================
 // Types
@@ -262,6 +268,7 @@ export type {
   EvalContext,
   EvalResult,
   FlagEvalResult,
+  FlagOffReason,
   RuleValidationError,
   CachedFlag,
   FlagValueType,

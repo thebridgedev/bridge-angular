@@ -1,10 +1,11 @@
 import { inject, type Injector } from '@angular/core';
 import type { CanActivateFn, UrlTree } from '@angular/router';
-import { Router } from '@angular/router';
+import { RedirectCommand, Router } from '@angular/router';
 import {
   sanitizeReturnTo,
   stashReturnTo,
   withReturnTo,
+  type FlagOffReason,
   type ReturnToConfig,
 } from '@nebulr-group/bridge-auth-core';
 import { BridgeConfigService } from '../config/bridge-config.service';
@@ -65,28 +66,88 @@ function findMatchingRule(
 }
 
 /**
- * FF 2.0 flag read for the route guard. `bridge.evaluate(key, false)` resolves
- * synchronously from the hydrated cache; `.passed` is the boolean. Replaces the
- * legacy FeatureFlagService `isFeatureEnabled` (bulkEvaluate) path.
+ * TBP-756 — why a route's feature flag refused, as the redirect carries it.
+ *   - `reason`: `plan` (an upgrade alone would open it), `permission` (this
+ *     person's role or privileges), `off` (switched off for everyone), `rule`
+ *     (another condition) or `rollout`;
+ *   - `flag`: the flag that refused;
+ *   - `feature`: with `plan`, the plan feature the rule asks for.
+ *
+ * The page the guard redirects to reads it from the navigation state under
+ * {@link BRIDGE_RESTRICTION_STATE_KEY} (for example
+ * `history.state?.bridgeRestriction`). Absent when the flag has not said why
+ * (not loaded yet), and on every other kind of redirect.
  */
-function isFlagEnabled(flag: string, bridge: BridgeService): boolean {
-  return bridge.evaluate<boolean>(flag, false).passed;
+export interface BridgeRouteRestriction {
+  reason: FlagOffReason;
+  flag: string;
+  feature?: string;
 }
 
-function evaluateFlagRequirement(
-  req: FlagRequirement,
-  bridge: BridgeService,
-): boolean {
-  if (typeof req === 'string') {
-    return isFlagEnabled(req, bridge);
+/** Navigation-state key under which a flag redirect carries its {@link BridgeRouteRestriction}. */
+export const BRIDGE_RESTRICTION_STATE_KEY = 'bridgeRestriction';
+
+// TBP-756 — how close a reason is to "an upgrade alone opens it" (auth-core's order).
+const REASON_RANK: Record<FlagOffReason, number> = { plan: 0, permission: 1, rule: 2, off: 3, rollout: 4 };
+
+interface FlagVerdict {
+  ok: boolean;
+  restriction?: BridgeRouteRestriction;
+}
+
+/**
+ * FF 2.0 flag read for the route guard. `bridge.evaluate(key, false)` resolves
+ * synchronously from the hydrated cache; `.passed` is the boolean and, when it
+ * failed, `.reason` / `.feature` say why (auth-core 0.8, TBP-756).
+ */
+function readFlag(flag: string, bridge: BridgeService): FlagVerdict {
+  const result = bridge.evaluate<boolean>(flag, false) as {
+    passed: boolean;
+    reason?: FlagOffReason;
+    feature?: string;
+  };
+  if (result.passed) return { ok: true };
+  if (!result.reason || !(result.reason in REASON_RANK)) return { ok: false };
+  return {
+    ok: false,
+    restriction: {
+      reason: result.reason,
+      flag,
+      ...(result.feature ? { feature: result.feature } : {}),
+    },
+  };
+}
+
+/**
+ * Evaluate a route's flag requirement and, when it fails, say why — the same
+ * choice auth-core's route guard makes (TBP-756):
+ *   - one flag: that flag's reason;
+ *   - `any`: every flag failed; the one closest to "an upgrade alone opens it"
+ *     wins, since opening any one of them is enough;
+ *   - `all`: only the failing flags count, and the one furthest from it wins,
+ *     since each of them has to open.
+ * A failing flag whose reason is unknown makes the whole reason unknown.
+ */
+export function evaluateFlagRequirement(req: FlagRequirement, bridge: BridgeService): FlagVerdict {
+  if (typeof req === 'string') return readFlag(req, bridge);
+  const flags = 'any' in req ? req.any : 'all' in req ? req.all : null;
+  if (!flags) return { ok: true };
+  const isAny = 'any' in req;
+  const verdicts = flags.map((f) => readFlag(f, bridge));
+  const ok = isAny ? verdicts.some((v) => v.ok) : verdicts.every((v) => v.ok);
+  if (ok) return { ok };
+  let pick: BridgeRouteRestriction | undefined;
+  for (const v of verdicts) {
+    if (v.ok) continue;
+    if (!v.restriction) return { ok };
+    const better =
+      !pick ||
+      (isAny
+        ? REASON_RANK[v.restriction.reason] < REASON_RANK[pick.reason]
+        : REASON_RANK[v.restriction.reason] > REASON_RANK[pick.reason]);
+    if (better) pick = v.restriction;
   }
-  if ('any' in req) {
-    return req.any.some((f) => isFlagEnabled(f, bridge));
-  }
-  if ('all' in req) {
-    return req.all.every((f) => isFlagEnabled(f, bridge));
-  }
-  return true;
+  return pick ? { ok, restriction: pick } : { ok };
 }
 
 function isPublicRoute(pathname: string, config: RouteGuardConfig): boolean {
@@ -107,7 +168,7 @@ function isPublicRoute(pathname: string, config: RouteGuardConfig): boolean {
 export type NavigationDecision =
   | { type: 'allow' }
   | { type: 'login'; loginUrl: string; returnTo?: string }
-  | { type: 'redirect'; to: string; returnTo?: string };
+  | { type: 'redirect'; to: string; returnTo?: string; restriction?: BridgeRouteRestriction };
 
 /**
  * Reduce the attempted URL to something safe to return to after login, or null.
@@ -217,11 +278,20 @@ async function getNavigationDecision(
   // Check feature flag restriction
   const rule = findMatchingRule(pathname, config);
   if (rule?.featureFlag) {
-    const ok = evaluateFlagRequirement(rule.featureFlag, bridge);
+    const verdict = evaluateFlagRequirement(rule.featureFlag, bridge);
     logger.debug(
-      `[route-guard] path ${pathname} is restricted by bridge feature flag ${rule.featureFlag} and flag requirement evaluated to ${ok}`,
+      `[route-guard] path ${pathname} is restricted by bridge feature flag ${JSON.stringify(rule.featureFlag)} and flag requirement evaluated to ${verdict.ok}`,
+      verdict.restriction ?? '',
     );
-    if (!ok) return { type: 'redirect', to: rule.redirectTo ?? '/' };
+    if (!verdict.ok) {
+      return {
+        type: 'redirect',
+        to: rule.redirectTo ?? '/',
+        // TBP-756 — only with a known reason, so a flag that says nothing gives
+        // exactly the redirect it gave before.
+        ...(verdict.restriction ? { restriction: verdict.restriction } : {}),
+      };
+    }
   }
 
   // Paywall redirect — the Angular analogue of bridge-svelte's BridgeBootstrap
@@ -311,6 +381,12 @@ export function bridgeAuthGuard(): CanActivateFn {
         // `createUrlTree([to])` treats the whole string as one path segment and
         // drops any query on it, which would silently discard the return target
         // the login branch just attached. `parseUrl` keeps it.
+        if (outcome.restriction) {
+          // TBP-756 — the page redirected to learns why (navigation state).
+          return new RedirectCommand(router.parseUrl(outcome.to) as UrlTree, {
+            state: { [BRIDGE_RESTRICTION_STATE_KEY]: outcome.restriction },
+          });
+        }
         return router.parseUrl(outcome.to) as UrlTree;
     }
   };
@@ -351,7 +427,12 @@ export async function recheckBridgeRoute(injector: Injector): Promise<void> {
       return;
     case 'redirect':
       _lastAllowedUrl = null;
-      await router.navigateByUrl(router.parseUrl(outcome.to), { replaceUrl: true });
+      await router.navigateByUrl(router.parseUrl(outcome.to), {
+        replaceUrl: true,
+        ...(outcome.restriction
+          ? { state: { [BRIDGE_RESTRICTION_STATE_KEY]: outcome.restriction } }
+          : {}),
+      });
       return;
   }
 }

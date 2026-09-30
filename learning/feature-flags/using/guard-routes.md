@@ -59,6 +59,34 @@ cache the rest of the SDK uses. It's independent of the in-component
 cache internally, so no extra setup is needed: declare the rule and the guard
 redirects when the flag is off.
 
+When a flag turns a route away, the redirect says why. The page it lands on
+reads it from the navigation state under `BRIDGE_RESTRICTION_STATE_KEY`:
+
+```typescript
+// src/app/upgrade/upgrade.component.ts
+import { Component } from '@angular/core';
+import { BRIDGE_RESTRICTION_STATE_KEY, type BridgeRouteRestriction } from '@nebulr-group/bridge-angular';
+
+@Component({
+  selector: 'app-upgrade',
+  standalone: true,
+  template: `
+    @if (restriction?.reason === 'plan') {
+      <p>Your plan does not include {{ restriction?.feature ?? 'this page' }}. Upgrade to open it.</p>
+    }
+  `,
+})
+export default class UpgradePage {
+  readonly restriction = history.state?.[BRIDGE_RESTRICTION_STATE_KEY] as BridgeRouteRestriction | undefined;
+}
+```
+
+`reason` is one of `'plan'`, `'permission'`, `'off'`, `'rule'` or `'rollout'`,
+`flag` is the flag that refused, and with `'plan'`, `feature` is the plan
+feature the rule asks for. For an `any` requirement the flag closest to "an
+upgrade opens it" is named; for `all`, the one furthest from it. There is no
+state when the flag has not said why.
+
 Route rules can also guard on authentication and billing state; see
 [Route guards](/auth/securing/route-guards/) in the Auth section for the full
 `RouteRule` reference.

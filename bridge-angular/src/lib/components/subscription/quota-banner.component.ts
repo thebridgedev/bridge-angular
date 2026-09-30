@@ -29,6 +29,7 @@ import {
   createQuotaSignal,
   type BillingSignal,
 } from '../../core/billing-signals';
+import { BRIDGE_BILLING_DEFAULTS } from '../../routing/billing-paths';
 
 type Chassis = 'rail';
 type Severity = 'warn' | 'critical';
@@ -136,7 +137,7 @@ export class QuotaBannerComponent implements OnChanges, OnDestroy {
       return;
     }
     // Destination priority: `actionHref` input → `billing.manageRoute` config
-    // → '/billing'.
+    // → '/subscription' (TBP-744; was '/billing', a page no guide told anyone to create).
     if (typeof window !== 'undefined') {
       let manageRoute: string | undefined;
       try {
@@ -144,7 +145,7 @@ export class QuotaBannerComponent implements OnChanges, OnDestroy {
       } catch {
         // Config not initialized — fall through to the default.
       }
-      window.location.href = this.actionHref ?? manageRoute ?? '/billing';
+      window.location.href = this.actionHref ?? manageRoute ?? BRIDGE_BILLING_DEFAULTS.manageRoute;
     }
   }
 }

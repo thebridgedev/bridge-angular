@@ -1,3 +1,4 @@
+import type { Type } from '@angular/core';
 import type { MessageOverrides, ReturnToConfig } from '@nebulr-group/bridge-auth-core';
 
 export interface BridgeConfig {
@@ -42,15 +43,26 @@ export interface BridgeConfig {
   cloudViewsUrl?: string;
 
   /**
-   * Base URL for the Bridge API. Used by the Feature Flags 2.0 SDK and the
-   * realtime runtime (live updates channel). Distinct from `authBaseUrl`
-   * (which includes the `/auth` path) and `cloudViewsUrl`.
+   * Base URL for the Bridge API. Used by the auth runtime, Feature Flags 2.0 and
+   * the realtime runtime (live updates channel).
+   * Unset (or empty) means production. Set it for a stage, local or
+   * self-hosted app — an app id from another environment against production
+   * fails with "app not found".
    * @default 'https://api.thebridge.dev'
    *
-   * The SDK reads no environment variables. To target stage or a local API,
-   * pass this from your own env (e.g. `environment.bridgeApiBaseUrl`).
+   * Angular has no environment-variable convention, so configuration stays in
+   * code: pass it from your own `environment.ts`.
    */
   apiBaseUrl?: string;
+
+  /**
+   * Base URL of Bridge's hosted sign-in pages (hosted mode). On Bridge's own
+   * domains it follows `apiBaseUrl` (`api-stage.thebridge.dev` →
+   * `auth-stage.thebridge.dev`), so set it only for a local or self-hosted
+   * Bridge.
+   * @default derived from `apiBaseUrl`, else 'https://auth.thebridge.dev'
+   */
+  hostedUrl?: string;
 
   /**
    * Debug mode
@@ -96,31 +108,72 @@ export interface BridgeConfig {
   returnTo?: ReturnToConfig;
 
   /**
-   * Billing paywall configuration. When set, Bridge redirects an authenticated
-   * tenant that has not selected a plan to `paywallRoute` before a protected
-   * route renders (gated on `getSubscriptionStatus()` →
-   * `shouldSelectPlan && paymentsAutoRedirect !== false`). Mirrors
-   * bridge-svelte's `billing` config.
+   * Billing destinations and the upgrade dialog. Mirrors bridge-svelte's
+   * `billing` config (TBP-702/703). Every route defaults to a page
+   * `bridgeBillingRoutes()` serves.
    */
   billing?: {
     /**
-     * Route to redirect to when the tenant has no plan selected.
-     * e.g. '/welcome' or '/subscription'
+     * Where a signed-in workspace with no plan is redirected before a protected
+     * route renders. The default applies only to an app that has plans (an app
+     * without billing has only plan-less workspaces); a value set here always
+     * applies. `false` turns the redirect off. Workspaces of an app with
+     * `paymentsAutoRedirect` off are never redirected.
+     * @default '/subscription/plan'
      */
-    paywallRoute?: string;
+    paywallRoute?: string | false;
     /**
-     * Route to redirect to when a Stripe checkout confirmation fails.
-     * @default '/payment-error'
+     * Where a failed Stripe checkout confirmation lands.
+     * @default '/subscription/error'
      */
     paymentErrorRoute?: string;
     /**
-     * Route where your plan/billing management page lives — the default
-     * destination of the Upgrade/Manage CTA in `<bridge-quota-banner>` and
-     * `<bridge-billing-notice>`.
-     * @default '/billing'
+     * The subscription page — the default destination of the Upgrade/Manage
+     * CTA in `<bridge-quota-banner>`, `<bridge-billing-notice>`,
+     * `<bridge-quota-gate>` and the upgrade dialog. A completed checkout lands
+     * on `<manageRoute>/success` by default.
+     * @default '/subscription'
      */
     manageRoute?: string;
+    /**
+     * The dialog `provideBridge()` mounts, which opens when your backend refuses
+     * a request because a plan limit is reached (`402` with
+     * `code: 'QUOTA_EXCEEDED'`, what bridge-nestjs's `@RequireQuota` sends) or
+     * a plan feature is missing (`402 FEATURE_NOT_IN_PLAN`), and when someone
+     * reaches a route whose flag is off because of the plan. `false` turns it
+     * off (listen with `onBridgeQuotaExceeded()` instead); a standalone
+     * component replaces it and receives {@link BridgeUpgradeDialogInputs} as
+     * inputs.
+     * @default true
+     */
+    upgradeDialog?: boolean | Type<unknown>;
+    /**
+     * Origins of your own backend when it is not on the page's origin, e.g.
+     * `['https://api.example.com']`. `bridgeInterceptor` attaches the user's
+     * token to, and reads plan-limit refusals from, the page's origin, Bridge's
+     * API and these origins only.
+     */
+    apiOrigins?: string[];
   };
+}
+
+/**
+ * The inputs a replacement upgrade dialog (`billing.upgradeDialog: MyDialog`)
+ * receives — the same the built-in `<bridge-upgrade-dialog>` takes.
+ */
+export interface BridgeUpgradeDialogInputs {
+  /** The plan-limit refusal to explain, or null (the feature variant, or closed). */
+  refusal: import('../billing/quota-refusal').BridgeQuotaRefusal | null;
+  /** With no refusal: the feature (or flag) the plan does not include. */
+  feature: string | null;
+  /** Where the Upgrade button goes: the refusal's `fix`, else `billing.manageRoute`. */
+  upgradeHref: string;
+  /** True when the signed-in user may manage billing; a member is told to ask the owner. */
+  canUpgrade: boolean;
+  /** The plan catalogue, for "Included in" — null until loaded. */
+  plans: ReadonlyArray<import('@nebulr-group/bridge-auth-core').Plan> | null;
+  /** Call to close the dialog. */
+  onclose: () => void;
 }
 
 export interface TokenSet {

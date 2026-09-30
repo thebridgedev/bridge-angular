@@ -15,7 +15,7 @@ import { PlanSelectorComponent } from '@nebulr-group/bridge-angular';
       <h1 class="heading-xl">Subscription (relative URLs)</h1>
       <bridge-plan-selector
         successRedirect="/subscription/success?payment=success"
-        cancelRedirect="/subscription/cancel?payment=cancel"
+        cancelRedirect="/subscription?payment=cancel"
       />
     </div>
   `,

@@ -20,42 +20,43 @@ The stylesheet provides two layers:
 - **Structural CSS**: layout, spacing, and sizing that components need to render correctly.
 - **Visual defaults**: a minimal but complete out-of-the-box appearance so forms look reasonable with no extra work. These include a visible input border/focus ring, an indigo primary button, and colored error/success alert banners.
 
-## CSS variables reference
+## The token contract
 
-All visual defaults are driven by CSS custom properties defined on `:root`. Override any of them in your own CSS to theme the components:
+The `--bridge-*` variables are the supported way to restyle every Bridge page and component — the same contract as every Bridge plugin (TBP-744). Set them in your own stylesheet on `:root`, or on a wrapper to theme one area. The plugin declares its defaults on `:where(:root)`, which has zero specificity, so **your `:root` wins whichever stylesheet loads first**.
 
 ```css
 /* src/styles.css */
 :root {
-  --bridge-primary: #4f46e5;          /* button + focus ring color */
-  --bridge-primary-hover: #4338ca;    /* button hover state */
-  --bridge-primary-fg: #ffffff;       /* text on primary button */
-  --bridge-border: #d1d5db;           /* input + secondary button border */
-  --bridge-border-radius: 6px;        /* corners for inputs, buttons, alerts */
-  --bridge-input-focus: #4f46e5;      /* input focus-ring color */
-
-  /* alert colors */
-  --bridge-alert-error-bg: #fef2f2;
-  --bridge-alert-error-fg: #991b1b;
-  --bridge-alert-error-border: #fca5a5;
-  --bridge-alert-success-bg: #f0fdf4;
-  --bridge-alert-success-fg: #166534;
-  --bridge-alert-success-border: #86efac;
+  --bridge-primary: #0f766e;
+  --bridge-border-radius: 10px;
 }
 ```
 
-### Additional internal variables
+| Token | Default | Styles |
+|---|---|---|
+| `--bridge-primary` | `#4f46e5` | Primary buttons, the selected tab and plan interval, the active workspace |
+| `--bridge-primary-hover` | primary, 15% darker | Primary button hover |
+| `--bridge-primary-fg` | `#ffffff` | Text on primary surfaces |
+| `--bridge-primary-light` | primary at 10% | Tint behind the active workspace |
+| `--bridge-input-focus` | primary | Input focus ring |
+| `--bridge-bg` | `#ffffff` | Dialogs, menus, panels |
+| `--bridge-foreground` | `#111827` | Text on those surfaces, workspace names |
+| `--bridge-muted` | `#6b7280` | Secondary text, hints, table headings |
+| `--bridge-muted-bg` | `#f3f4f6` | Subtle fills: tab tracks, hovers, the MFA backup code |
+| `--bridge-border` | `#d1d5db` | Input, table, card and secondary button borders |
+| `--bridge-border-radius` | `6px` | Corners of inputs, buttons, alerts, cards and dialogs |
+| `--bridge-overlay` | `rgba(15, 23, 42, 0.45)` | Backdrop behind dialogs |
+| `--bridge-alert-error-{bg,fg,border}` | `#fef2f2` / `#991b1b` / `#fca5a5` | Errors, critical billing notices, cancelled plan badge |
+| `--bridge-alert-success-{bg,fg,border}` | `#f0fdf4` / `#166534` / `#86efac` | Confirmations, active plan badge |
+| `--bridge-alert-info-{bg,fg,border}` | `#eff6ff` / `#1e40af` / `#bfdbfe` | Info notices, trial badge |
+| `--bridge-alert-warning-{bg,fg,border}` | `#fffbeb` / `#92400e` / `#fcd34d` | Warnings, a quota nearing its limit, past-due badge |
+| `--bridge-auth-page-padding` | `3rem 1rem` | Padding of the sign-in pages `bridgeAuthRoutes()` serves |
+| `--bridge-billing-page-width` | `60rem` | Width of the subscription pages and `<bridge-paywall-page>` |
+| `--bridge-billing-page-padding` | `3rem 1rem` | Padding of the subscription pages and `<bridge-paywall-page>` |
+| `--bridge-paywall-bg` | `rgba(15, 23, 42, 0.72)` | Backdrop of the `<bridge-paywall>` overlay and the billing lockscreen |
+| `--bridge-paywall-panel-bg` | `--bridge-bg` | Panel of the `<bridge-paywall>` overlay |
 
-These variables are used by specific components and can also be overridden:
-
-| Variable | Default | Used by |
-|----------|---------|---------|
-| `--bridge-muted` | `#6b7280` | Password toggle, MFA help text, token table headings, workspace user text |
-| `--bridge-foreground` | `#374151` | Password toggle hover, workspace name text |
-| `--bridge-bg-muted` | `#f5f5f5` | MFA backup code background |
-| `--bridge-muted-bg` | `#f3f4f6` | Workspace item hover background |
-| `--bridge-primary-light` | `#eff6ff` | Active workspace item background |
-| `--bridge-primary-foreground` | `#ffffff` | Workspace avatar text color |
+The derived tokens (hover, light, focus) follow `--bridge-primary` wherever you set it, unless you set them too. Two older names still work as deprecated aliases: `--bridge-primary-foreground` for `--bridge-primary-fg`, and `--bridge-bg-muted` for `--bridge-muted-bg`. Fonts and body text colour are not tokens: Bridge pages render inside your layout and inherit them.
 
 ## Zero specificity
 

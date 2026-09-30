@@ -9,7 +9,7 @@ This decision shapes everything else. Make it before writing code; getting it wr
 | You want | Use | What you build |
 |---|---|---|
 | The fastest path; Bridge owns the login UI | **Hosted auth** (default) | Nothing — no login page |
-| Login inside your app, your styling | **SDK auth** | Your own routes rendering `<bridge-login-form>` etc. |
+| Login inside your app | **SDK auth** | Nothing either — `...bridgeAuthRoutes()` serves every sign-in page |
 
 **Setting `loginRoute` in `BridgeConfig` is the entire switch.** Without it you get hosted; with it you get in-app. If you are being redirected to a route you never built, that field is why.
 
@@ -36,26 +36,51 @@ npm i @nebulr-group/bridge-angular
 ```ts
 // src/app/app.config.ts
 import { ApplicationConfig } from '@angular/core';
+import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
-import { provideBridge, type BridgeConfig } from '@nebulr-group/bridge-angular';
+import { bridgeInterceptor, provideBridge, type BridgeConfig } from '@nebulr-group/bridge-angular';
 import { environment } from '../environments/environment';
 import { routes } from './app.routes';
 
 const bridgeConfig: BridgeConfig = {
   appId: environment.bridgeAppId,
   // Defaults to production. Required for a stage / local / self-hosted app.
-  apiBaseUrl: environment.bridgeApiBaseUrl || undefined,
+  // The hosted sign-in pages follow it on Bridge's domains.
+  apiBaseUrl: environment.bridgeApiBaseUrl,
 };
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes),
+    // Your own API calls carry the user's token; a plan-limit 402 opens the upgrade dialog.
+    provideHttpClient(withInterceptors([bridgeInterceptor])),
     provideBridge(bridgeConfig),
   ],
 };
 ```
 
-> **If `provideBridge()` is missing or `appId` is empty, nothing errors loudly.** Flags return their defaults, auth never resolves, and the app looks like it is simply configured that way. An empty `environment.bridgeAppId` is indistinguishable from "every flag is off" — check this first when something seems inert.
+Configuration is code (Angular has no env-var convention): each option resolves as *explicit option > default*, and an empty string is unset. **An empty `appId` throws at startup, naming the option.** If `provideBridge()` itself is missing, nothing errors loudly: flags return their defaults and auth never resolves — check that first when something seems inert.
+
+## Step 2b — Let Bridge serve its pages
+
+```ts
+// src/app/app.routes.ts
+import { bridgeAuthGuard, bridgeAuthRoutes, bridgeBillingRoutes } from '@nebulr-group/bridge-angular';
+
+export const routes: Routes = [
+  ...bridgeAuthRoutes(),                 // /auth/login, /signup, /oauth-callback, /set-password/:token, …
+  {
+    path: '',
+    canActivateChild: [bridgeAuthGuard()],
+    children: [
+      ...bridgeBillingRoutes(),          // only with plans: /subscription, /subscription/plan, /success, /error
+      { path: '', component: HomeComponent },
+    ],
+  },
+];
+```
+
+**Do not write an OAuth callback, a set-password page, or subscription pages.** These spreads own them, including the address in every signup verification email. The sign-in pages are public by construction; to replace one, `bridgeAuthRoutes({ overrides: { login: { component: MyLogin } } })`.
 
 ## Step 3 — Guard routes declaratively
 
@@ -88,13 +113,13 @@ import { bridgeAuthGuard } from '@nebulr-group/bridge-angular';
 
 export const routes: Routes = [
   { path: '', component: HomeComponent },
-  { path: 'holo-lab', component: HoloLabComponent, canActivate: [bridgeAuthGuard] },
+  { path: 'holo-lab', component: HoloLabComponent, canActivate: [bridgeAuthGuard()] },
 ];
 ```
 
 `RouteRule` supports exactly four fields: `match`, `public`, `featureFlag` (a key, or `{ any: [...] }` / `{ all: [...] }`) and `redirectTo`.
 
-> **There is no per-rule `billing` field.** Billing gating is app-level, not per-route: set `billing.paywallRoute` on `BridgeConfig` and the guard redirects a tenant without an active plan there. To gate one route on what the plan *bought*, check `bridge.tenant.entitlements.can(key)` in the component or a resolver. See `billing-prompt.md`.
+> **There is no per-rule `billing` field.** Billing gating is app-level: a tenant without an active plan is redirected to `/subscription/plan` (for an app that has plans; `billing.paywallRoute` changes it, `false` turns it off). To gate one route on what the plan *sells*, use a `featureFlag` rule whose flag is ruled `bridge:billing.entitlement.<key> eq true` — reaching it opens the upgrade dialog. See `billing-prompt.md`.
 
 > **Gating a whole page? Use a rule, not a component-level `if`.** A rule redirects before the component ever renders; an `if` inside the component means the page mounts, fetches, and only then hides itself — which leaks both the route's existence and whatever the page loaded on the way.
 

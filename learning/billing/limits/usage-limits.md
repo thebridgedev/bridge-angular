@@ -24,24 +24,47 @@ export class UsagePanelComponent {}
 | `actionHref` | `string` | — | Upgrade CTA destination for this instance. Overrides `billing.manageRoute` config; `onActionClick` takes precedence over both |
 
 Like `<bridge-billing-notice>`, the default Upgrade CTA navigates to
-`billing.manageRoute` (falling back to `/billing`).
+`billing.manageRoute` (default `/subscription`, served by `bridgeBillingRoutes()`).
 
-## Reading quota state yourself
+## Three levels, lowest first
 
-For a fully custom quota UI, read the underlying snapshot directly:
+Pick the lowest level that does the job ([How Bridge works](../../mechanisms.md), section 4).
 
-```ts
-import { useBridge } from '@nebulr-group/bridge-angular';
+**Level 0 — nothing on the page.** Your backend refuses at the cap with `402 QUOTA_EXCEEDED` (bridge-nestjs `@RequireQuota`); with `bridgeInterceptor` provided once (`provideHttpClient(withInterceptors([bridgeInterceptor]))`) or calls made with `bridgeFetch()`, the upgrade dialog `provideBridge()` mounts opens, names the metric, and links to the subscription page. A member who cannot manage billing is told to ask the workspace owner. `billing.upgradeDialog: false` turns it off (listen with `onBridgeQuotaExceeded()`); a component there replaces it.
 
-const q = useBridge().quota('ai_completions');
-// undefined while loading (first call triggers a fetch), then:
-// q?.used, q?.limit, q?.remaining, q?.warningLevel ('approaching' | 'critical' | null)
+**Level 1 — one component or directive.** The action is disabled at a known hard cap, with an upgrade line beside it:
+
+```html
+<bridge-quota-gate metric="tickets">
+  <button (click)="createTicket()">New ticket</button>
+  <!-- optional: your own line at the cap -->
+  <span *bridgeQuotaAtLimit="let q">{{ q.used }} of {{ q.limit }} tickets used.</span>
+</bridge-quota-gate>
+
+<!-- or on the control itself -->
+<button [bridgeQuotaGate]="'tickets'" (click)="createTicket()">New ticket</button>
 ```
 
-> **Framework note:** this is auth-core's `useBridge`, re-exported by
-> `@nebulr-group/bridge-angular`. It's a temporary escape hatch: the Angular SDK
-> doesn't yet expose quota state on the `BridgeService` surface. For a reactive
-> read that follows `quota.updated` pushes, wrap the metric with
-> `createQuotaSignal(metric)` (also exported by the SDK) and call `.destroy()`
-> in `ngOnDestroy`. Until the SDK surfaces quotas on `bridge.tenant`, these are
-> the two reads available.
+It never disables on "don't know yet": while loading, with no quota on the plan, or for a metered quota, the action stays enabled.
+
+**Level 2 — your own UI.** `injectQuota(metric)` returns a signal of the live numbers:
+
+```ts
+import { Component } from '@angular/core';
+import { injectQuota } from '@nebulr-group/bridge-angular';
+
+@Component({
+  selector: 'app-tickets-meter',
+  standalone: true,
+  template: `
+    @if (tickets().loading) { Loading… }
+    @else if (tickets().unlimited) { Unlimited tickets }
+    @else { {{ tickets().used }} of {{ tickets().limit }} tickets }
+  `,
+})
+export class TicketsMeterComponent {
+  readonly tickets = injectQuota('tickets');
+}
+```
+
+`used`, `limit` and `remaining` stay `null` while `loading` — never `0`. `kind` says whether the metric is a `counter` (resets each period) or a `gauge` (a count your app reports).

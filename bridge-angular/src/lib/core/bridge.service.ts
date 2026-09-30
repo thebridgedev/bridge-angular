@@ -13,7 +13,9 @@
  * service after the runtime starts) wires `createBridgeFlags` against the
  * shared RealtimeClient and registers the dev attribute provider LAST.
  */
-import { Injectable, type Signal } from '@angular/core';
+import { Injectable, inject, type Signal } from '@angular/core';
+import type { BridgeAuth } from '@nebulr-group/bridge-auth-core';
+import { AuthService } from '../shared/services/auth.service';
 import type {
   EvalContext,
   FlagEvalResult,
@@ -73,8 +75,35 @@ export interface BridgeTenantSurface {
   };
 }
 
+/**
+ * TBP-744 — usage reporting from the browser (parity with svelte's
+ * `bridge.usage`, TBP-697). Count once, where the action happens: when the
+ * action stays in the browser, count it here; when the click calls your
+ * server, the backend handler counts it and the page reports nothing.
+ * *If deleting it frees room, it's a gauge (`set`); if it happened, it's a
+ * counter (`report`).*
+ */
+export interface BridgeUsageSurface {
+  /** Count something that happened (a counter). Fire-and-forget, queued and batched. */
+  report(metric: string, value?: number, idempotencyKey?: string): void;
+  /** Say how many of something exist right now (a gauge). Resolves once stored. */
+  set(metric: string, value: number): Promise<void>;
+  /** Queue depth, retries and the last flush — for a debug panel. */
+  getQueueStatus(): Promise<Awaited<ReturnType<BridgeAuth['usage']['getQueueStatus']>>>;
+}
+
 @Injectable({ providedIn: 'root' })
 export class BridgeService {
+  private readonly authService = inject(AuthService);
+
+  /** Browser usage reporting — `bridge.usage.report(metric)` / `.set(metric, n)`. */
+  readonly usage: BridgeUsageSurface = {
+    report: (metric, value, idempotencyKey) =>
+      this.authService.getBridgeAuth().usage.report(metric, value, idempotencyKey),
+    set: (metric, value) => this.authService.getBridgeAuth().usage.set(metric, value),
+    getQueueStatus: () => this.authService.getBridgeAuth().usage.getQueueStatus(),
+  };
+
   private _flagsBundle: BridgeFlagsBundle | undefined;
 
   /** App scope — `bridge.app.branding`, `bridge.app.plans`. */

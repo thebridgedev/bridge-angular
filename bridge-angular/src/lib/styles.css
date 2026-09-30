@@ -1,12 +1,54 @@
 /*
- * bridge-svelte default styles — plain baseline
+ * bridge-angular default styles
  *
- * Import this file to get the default appearance for all bridge-svelte components:
- *   import '@nebulr-group/bridge-svelte/styles';
+ *   "styles": ["node_modules/@nebulr-group/bridge-angular/styles.css"]   (angular.json)
  *
- * Without this file, components render as plain unstyled HTML — the headless contract.
- * This file provides structural CSS only. Visual design (colors, shadows, radii) is
- * intentionally left to the consumer or a future design-system layer.
+ * Without this file, components render as plain unstyled HTML — the headless
+ * contract. With it, they get their structure plus a small default look driven
+ * entirely by the `--bridge-*` tokens below.
+ *
+ * ── THE TOKEN CONTRACT ────────────────────────────────────────────────────
+ *
+ * The `--bridge-*` custom properties are the supported way to restyle every
+ * Bridge page and component. Set them in your own stylesheet:
+ *
+ *   :root { --bridge-primary: #0f766e; --bridge-border-radius: 10px; }
+ *
+ * The defaults are declared on `:where(:root)`, which has zero specificity, so
+ * YOUR `:root` wins whatever order the two stylesheets load in. Set a token on
+ * a wrapper instead of `:root` to theme one area.
+ *
+ * Colour
+ *   --bridge-primary          primary buttons, selected tab, active workspace
+ *   --bridge-primary-hover    primary button hover (derived from primary)
+ *   --bridge-primary-fg       text on primary surfaces
+ *   --bridge-primary-light    tint behind the active workspace (derived)
+ *   --bridge-input-focus      input focus ring (defaults to primary)
+ *   --bridge-bg               dialogs, menus, panels
+ *   --bridge-foreground       text on those surfaces, emphasised names
+ *   --bridge-muted            secondary text: hints, table headings
+ *   --bridge-muted-bg         subtle fills: tab tracks, hovers, code boxes
+ *   --bridge-border           input, table, card and secondary button borders
+ *   --bridge-border-radius    corners of inputs, buttons, alerts, cards, dialogs
+ *   --bridge-overlay          backdrop behind dialogs
+ *   --bridge-alert-error-{bg,fg,border}     errors, critical billing notices
+ *   --bridge-alert-success-{bg,fg,border}   confirmations, active plan badge
+ *   --bridge-alert-info-{bg,fg,border}      info notices, trial badge
+ *   --bridge-alert-warning-{bg,fg,border}   warnings, quota nearing its limit
+ *
+ * Layout
+ *   --bridge-auth-page-padding     default container of the sign-in pages
+ *   --bridge-billing-page-width    subscription pages, <bridge-paywall-page>
+ *   --bridge-billing-page-padding  subscription pages, <bridge-paywall-page>
+ *   --bridge-paywall-bg            backdrop of <bridge-paywall> / the lockscreen
+ *   --bridge-paywall-panel-bg      panel of <bridge-paywall>
+ *
+ * Deprecated aliases — still honoured when set on :root, removed in a later
+ * major:  --bridge-primary-foreground → --bridge-primary-fg
+ *         --bridge-bg-muted           → --bridge-muted-bg
+ *
+ * Fonts and body text colour are not tokens: Bridge pages render inside your
+ * layout and inherit them.
  *
  * State selectors:
  *   [data-active="true"]    — active tab
@@ -19,21 +61,37 @@
  *   [data-variant="danger"] — danger variant
  */
 
-/* ─── CSS variable defaults (consumer can override at any scope) ─────────── */
+/* ─── Token defaults — zero specificity, so the app's :root always wins ──── */
 
-:root {
+:where(:root) {
+  /* Derived tokens (primary-hover, primary-fg, primary-light, input-focus,
+     muted-bg, paywall-panel-bg) have no value here on purpose: each falls back
+     to its source where it is used, so setting --bridge-primary on a wrapper
+     re-derives them for that wrapper too. */
   --bridge-primary: #4f46e5;
-  --bridge-primary-hover: #4338ca;
-  --bridge-primary-fg: #ffffff;
+  --bridge-bg: #ffffff;
+  --bridge-foreground: #111827;
+  --bridge-muted: #6b7280;
   --bridge-border: #d1d5db;
   --bridge-border-radius: 6px;
-  --bridge-input-focus: #4f46e5;
+  --bridge-overlay: rgba(15, 23, 42, 0.45);
   --bridge-alert-error-bg: #fef2f2;
   --bridge-alert-error-fg: #991b1b;
   --bridge-alert-error-border: #fca5a5;
   --bridge-alert-success-bg: #f0fdf4;
   --bridge-alert-success-fg: #166534;
   --bridge-alert-success-border: #86efac;
+  --bridge-alert-info-bg: #eff6ff;
+  --bridge-alert-info-fg: #1e40af;
+  --bridge-alert-info-border: #bfdbfe;
+  --bridge-alert-warning-bg: #fffbeb;
+  --bridge-alert-warning-fg: #92400e;
+  --bridge-alert-warning-border: #fcd34d;
+
+  --bridge-auth-page-padding: 3rem 1rem;
+  --bridge-billing-page-width: 60rem;
+  --bridge-billing-page-padding: 3rem 1rem;
+  --bridge-paywall-bg: rgba(15, 23, 42, 0.72);
 }
 
 /* ─── Input visual defaults ──────────────────────────────────────────────── */
@@ -47,8 +105,8 @@
 :where(input[type="text"]:focus, input[type="email"]:focus,
        input[type="password"]:focus, input[type="tel"]:focus,
        .bridge-input:focus) {
-  border-color: var(--bridge-input-focus);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bridge-input-focus) 20%, transparent);
+  border-color: var(--bridge-input-focus, var(--bridge-primary));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bridge-input-focus, var(--bridge-primary)) 20%, transparent);
 }
 
 /* ─── Buttons ────────────────────────────────────────────────────────────── */
@@ -92,13 +150,13 @@
 
 :where(.bridge-btn-primary) {
   background-color: var(--bridge-primary);
-  color: var(--bridge-primary-fg);
+  color: var(--bridge-primary-fg, var(--bridge-primary-foreground, #ffffff));
   border: 1px solid var(--bridge-primary);
   border-radius: var(--bridge-border-radius);
 }
 :where(.bridge-btn-primary:hover:not(:disabled)) {
-  background-color: var(--bridge-primary-hover);
-  border-color: var(--bridge-primary-hover);
+  background-color: var(--bridge-primary-hover, color-mix(in srgb, var(--bridge-primary) 85%, #000000));
+  border-color: var(--bridge-primary-hover, color-mix(in srgb, var(--bridge-primary) 85%, #000000));
 }
 :where(.bridge-btn-secondary, .bridge-btn-outline) {
   background-color: transparent;
@@ -275,12 +333,12 @@
   border: none;
   cursor: pointer;
   padding: 0.25rem;
-  color: var(--bridge-muted, #6b7280);
+  color: var(--bridge-muted);
   line-height: 1;
 }
 
 .bridge-password-toggle:hover {
-  color: var(--bridge-foreground, #374151);
+  color: var(--bridge-foreground);
 }
 
 /* ─── Auth form helpers ───────────────────────────────────────────────────── */
@@ -304,6 +362,11 @@
   width: 12rem;
 }
 
+.bridge-step-desc {
+  font-size: 0.875rem;
+  margin: 0 0 1rem;
+}
+
 /* TBP-635 — the card between a successful sign-in and the host app navigating. */
 .bridge-auth-settling {
   display: flex;
@@ -313,18 +376,13 @@
   /* Roughly the height of the credentials form it replaces, so the card does
      not collapse and then re-expand under the cursor. */
   min-height: 8rem;
-  color: var(--bridge-muted, #6b7280);
+  color: var(--bridge-muted);
   font-size: 0.875rem;
-}
-
-.bridge-step-desc {
-  font-size: 0.875rem;
-  margin: 0 0 1rem;
 }
 
 .bridge-mfa-help {
   font-size: 0.8125rem;
-  color: var(--bridge-muted, #6b7280);
+  color: var(--bridge-muted);
   margin: 0.75rem 0 0.25rem;
   text-align: center;
 }
@@ -358,7 +416,7 @@
   gap: 0.75rem;
   margin-bottom: 1rem;
   padding: 0.75rem;
-  background: var(--bridge-bg-muted, #f5f5f5);
+  background: var(--bridge-muted-bg, var(--bridge-bg-muted, #f3f4f6));
   border-radius: 0.5rem;
 }
 
@@ -446,6 +504,19 @@
   font-family: inherit;
 }
 
+:where(.bridge-team-tabs) {
+  border-bottom: 1px solid var(--bridge-border);
+}
+
+:where(.bridge-team-tab) {
+  color: var(--bridge-muted);
+}
+
+:where(.bridge-team-tab[data-active="true"]) {
+  color: var(--bridge-primary);
+  box-shadow: inset 0 -2px 0 var(--bridge-primary);
+}
+
 /* ─── TeamUserList ───────────────────────────────────────────────────────── */
 
 .bridge-team-users-header {
@@ -459,13 +530,6 @@
   margin: 0;
   font-size: 1.125rem;
   font-weight: 600;
-}
-
-/* TBP-763 — shown instead of an enabled Invite when every seat is taken. */
-.bridge-team-seats-limit {
-  margin: -0.5rem 0 1rem;
-  font-size: 0.875rem;
-  opacity: 0.8;
 }
 
 .bridge-team-loading {
@@ -640,6 +704,22 @@
   min-width: 160px;
 }
 
+:where(.bridge-team-actions-menu) {
+  background: var(--bridge-bg);
+  color: var(--bridge-foreground);
+  border: 1px solid var(--bridge-border);
+  border-radius: var(--bridge-border-radius);
+}
+
+:where(.bridge-team-table th) {
+  color: var(--bridge-muted);
+  border-bottom: 1px solid var(--bridge-border);
+}
+
+:where(.bridge-team-table td) {
+  border-bottom: 1px solid var(--bridge-border);
+}
+
 .bridge-team-actions-item {
   display: block;
   width: 100%;
@@ -654,15 +734,24 @@
 
 /* ─── Team Dialogs ───────────────────────────────────────────────────────── */
 
-.bridge-team-dialog {
+/* The team dialogs carry [data-bridge-team-dialog]; the upgrade dialog the class. */
+.bridge-team-dialog,
+[data-bridge-team-dialog] {
   border: none;
   padding: 0;
   max-width: 400px;
   width: 90%;
 }
 
-.bridge-team-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.4);
+:where(.bridge-team-dialog, [data-bridge-team-dialog]) {
+  background: var(--bridge-bg);
+  color: var(--bridge-foreground);
+  border-radius: var(--bridge-border-radius);
+}
+
+.bridge-team-dialog::backdrop,
+[data-bridge-team-dialog]::backdrop {
+  background: var(--bridge-overlay);
 }
 
 .bridge-team-dialog-content {
@@ -771,25 +860,25 @@
   letter-spacing: 0.05em;
   font-weight: 500;
   text-align: left;
-  border-bottom: 1px solid var(--bridge-border, #e5e7eb);
-  color: var(--bridge-muted, #6b7280);
+  border-bottom: 1px solid var(--bridge-border);
+  color: var(--bridge-muted);
 }
 
 [data-bridge-api-tokens] .bridge-api-td,
 [data-bridge-api-tokens] .bridge-api-td-name,
 [data-bridge-api-tokens] .bridge-api-td-muted {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--bridge-border, #e5e7eb);
+  border-bottom: 1px solid var(--bridge-border);
 }
 
 [data-bridge-api-tokens] .bridge-api-td-muted {
-  color: var(--bridge-muted, #6b7280);
+  color: var(--bridge-muted);
 }
 
 [data-bridge-api-tokens] .bridge-api-td-actions {
   padding: 0.75rem 1rem;
   text-align: right;
-  border-bottom: 1px solid var(--bridge-border, #e5e7eb);
+  border-bottom: 1px solid var(--bridge-border);
 }
 
 [data-bridge-api-tokens] .bridge-api-privileges {
@@ -799,7 +888,7 @@
 }
 
 [data-bridge-api-tokens] .bridge-api-inline-form {
-  border: 1px solid var(--bridge-border, #e5e7eb);
+  border: 1px solid var(--bridge-border);
   border-radius: 0.5rem;
   padding: 1rem 1.25rem;
 }
@@ -955,6 +1044,97 @@
   margin-top: 0.75rem;
 }
 
+.bridge-plan-interval-tabs {
+  /* Centered above the plan cards; flex + fit-content (not inline-flex) so
+     auto margins can center it regardless of the host page's text alignment. */
+  display: flex;
+  width: fit-content;
+  margin-inline: auto;
+  gap: 0.25rem;
+  margin-bottom: 1.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--bridge-border);
+  border-radius: var(--bridge-border-radius);
+  background: var(--bridge-muted-bg, var(--bridge-bg-muted, #f3f4f6));
+}
+
+.bridge-plan-interval-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.875rem;
+  border-radius: calc(var(--bridge-border-radius) - 0.2rem);
+  color: var(--bridge-muted);
+}
+
+.bridge-plan-interval-tab[data-active="true"] {
+  background: var(--bridge-primary);
+  color: var(--bridge-primary-fg, var(--bridge-primary-foreground, #ffffff));
+}
+
+.bridge-plan-unavailable {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--bridge-muted);
+}
+
+/* Plan-change confirmation dialog + success notice (TBP-33) */
+.bridge-plan-success {
+  margin-bottom: 1rem;
+}
+
+.bridge-plan-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--bridge-overlay);
+  display: grid;
+  place-items: center;
+  z-index: 1000;
+  padding: 1.25rem;
+}
+
+.bridge-plan-confirm {
+  background: var(--bridge-bg);
+  border: 1px solid var(--bridge-border);
+  border-radius: var(--bridge-border-radius);
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.35);
+  max-width: 26rem;
+  width: 100%;
+  padding: 1.25rem 1.25rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bridge-plan-confirm-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.bridge-plan-confirm-body {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.bridge-plan-confirm-note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--bridge-muted);
+  line-height: 1.5;
+}
+
+.bridge-plan-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
 .bridge-plan-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -995,6 +1175,16 @@
 .bridge-plan-description {
   margin: 0;
   font-size: 0.875rem;
+}
+
+/* TBP-755 — the features a plan includes. */
+.bridge-plan-features {
+  margin: 0;
+  padding-left: 1.125rem;
+  font-size: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 }
 
 .bridge-plan-prices {
@@ -1045,12 +1235,12 @@
 }
 
 [data-bridge-workspace-item]:hover:not(:disabled) {
-  background: var(--bridge-muted-bg, #f3f4f6);
+  background: var(--bridge-muted-bg, var(--bridge-bg-muted, #f3f4f6));
 }
 
 [data-bridge-workspace-item][data-active="true"] {
-  background: var(--bridge-primary-light, #eff6ff);
-  border-color: var(--bridge-primary, #3b82f6);
+  background: var(--bridge-primary-light, color-mix(in srgb, var(--bridge-primary) 10%, #ffffff));
+  border-color: var(--bridge-primary);
 }
 
 [data-bridge-workspace-item][data-loading="true"] {
@@ -1069,8 +1259,8 @@
   width: 2rem;
   height: 2rem;
   border-radius: 0.375rem;
-  background: var(--bridge-primary, #3b82f6);
-  color: var(--bridge-primary-foreground, #ffffff);
+  background: var(--bridge-primary);
+  color: var(--bridge-primary-fg, var(--bridge-primary-foreground, #ffffff));
   font-size: 0.875rem;
   font-weight: 600;
   flex-shrink: 0;
@@ -1094,7 +1284,7 @@
 [data-bridge-workspace-name] {
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--bridge-foreground, #111827);
+  color: var(--bridge-foreground);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1102,13 +1292,20 @@
 
 [data-bridge-workspace-user] {
   font-size: 0.75rem;
-  color: var(--bridge-muted, #6b7280);
+  color: var(--bridge-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* ─── Billing 2.0 — BridgeSubscriptionStatus ─────────────────────────────── */
+/* ════════════════════════════════════════════════════════════════════════════
+ * Component styles. bridge-svelte scopes these inside each component; Angular
+ * components here use no view encapsulation for them, so they live in this one
+ * file with the same `--bridge-*` tokens (TBP-744 — one token contract across
+ * the plugins).
+ * ════════════════════════════════════════════════════════════════════════════ */
+
+/* ─── <bridge-subscription-status> ─── */
 .bridge-subscription-status {
   display: inline-flex;
   align-items: center;
@@ -1127,42 +1324,43 @@
   font-size: 0.75rem;
   font-weight: 500;
   text-transform: lowercase;
-  background: #e5e7eb;
-  color: #374151;
+  background: var(--bridge-muted-bg, var(--bridge-bg-muted, #f3f4f6));
+  color: var(--bridge-foreground, #111827);
 }
 
 .bss-badge-active {
-  background: #d1fae5;
-  color: #065f46;
+  background: var(--bridge-alert-success-bg, #f0fdf4);
+  color: var(--bridge-alert-success-fg, #166534);
 }
 
 .bss-badge-trial {
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--bridge-alert-info-bg, #eff6ff);
+  color: var(--bridge-alert-info-fg, #1e40af);
 }
 
 .bss-badge-past_due,
 .bss-badge-cancel_at_period_end {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--bridge-alert-warning-bg, #fffbeb);
+  color: var(--bridge-alert-warning-fg, #92400e);
 }
 
 .bss-badge-canceled {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--bridge-alert-error-bg, #fef2f2);
+  color: var(--bridge-alert-error-fg, #991b1b);
 }
 
 .bss-loading,
 .bss-empty {
-  color: #6b7280;
+  color: var(--bridge-muted, #6b7280);
   font-style: italic;
 }
 
-.bss-error {
-  color: #b91c1c;
+.bss-error,
+.bss-error-reason {
+  color: var(--bridge-alert-error-fg, #991b1b);
 }
 
-/* ─── Billing 2.0 — BridgeBillingNotice ──────────────────────────────────── */
+/* ─── <bridge-billing-notice> and the billing lockscreen ─── */
 .bridge-billing-notice {
   display: flex;
   align-items: center;
@@ -1204,7 +1402,7 @@
 
 .bbn-cta:hover {
   background: currentColor;
-  color: white;
+  color: var(--bridge-bg, #ffffff);
 }
 
 /* Chassis variants */
@@ -1220,28 +1418,29 @@
 
 .bbn-chassis-card {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--bridge-border, #d1d5db);
 }
 
 /* Severity tokens */
 .bbn-severity-info {
-  background: #dbeafe;
-  color: #1e40af;
+  background: var(--bridge-alert-info-bg, #eff6ff);
+  color: var(--bridge-alert-info-fg, #1e40af);
 }
 
 .bbn-severity-warn {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--bridge-alert-warning-bg, #fffbeb);
+  color: var(--bridge-alert-warning-fg, #92400e);
 }
 
 .bbn-severity-critical {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--bridge-alert-error-bg, #fef2f2);
+  color: var(--bridge-alert-error-fg, #991b1b);
 }
 
+/* Locked inverts the surface: foreground as background, and vice versa. */
 .bbn-severity-locked {
-  background: #1f2937;
-  color: #f9fafb;
+  background: var(--bridge-foreground, #111827);
+  color: var(--bridge-bg, #ffffff);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1259,7 +1458,7 @@
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: rgba(15, 23, 42, 0.72);
+  background: var(--bridge-paywall-bg, rgba(15, 23, 42, 0.72));
   backdrop-filter: blur(2px);
 }
 
@@ -1271,8 +1470,8 @@
   width: 100%;
   padding: 1.5rem;
   border-radius: 0.75rem;
-  background: #1f2937;
-  color: #f9fafb;
+  background: var(--bridge-foreground, #111827);
+  color: var(--bridge-bg, #ffffff);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
   text-align: center;
 }
@@ -1301,11 +1500,11 @@
 }
 
 .bbl-cta:hover {
-  background: #f9fafb;
-  color: #1f2937;
+  background: var(--bridge-bg, #ffffff);
+  color: var(--bridge-foreground, #111827);
 }
 
-/* ─── Billing 2.0 — BridgeQuotaBanner ────────────────────────────────────── */
+/* ─── <bridge-quota-banner> ─── */
 .bridge-quota-banner {
   display: flex;
   align-items: center;
@@ -1337,7 +1536,7 @@
   margin-top: 0.25rem;
   width: 100%;
   height: 0.375rem;
-  background: rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, currentColor 15%, transparent);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -1363,7 +1562,7 @@
 
 .bqb-cta:hover {
   background: currentColor;
-  color: white;
+  color: var(--bridge-bg, #ffffff);
 }
 
 /* Chassis — rail only for US-11. */
@@ -1374,13 +1573,13 @@
 
 /* Severity tokens — mirror BridgeBillingNotice for visual consistency. */
 .bqb-severity-warn {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--bridge-alert-warning-bg, #fffbeb);
+  color: var(--bridge-alert-warning-fg, #92400e);
 }
 
 .bqb-severity-critical {
-  background: #fee2e2;
-  color: #991b1b;
+  background: var(--bridge-alert-error-bg, #fef2f2);
+  color: var(--bridge-alert-error-fg, #991b1b);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1390,7 +1589,7 @@
   }
 }
 
-/* ─── Billing 2.0 — BridgePaywall ────────────────────────────────────────── */
+/* ─── <bridge-paywall> ─── */
 .bridge-paywall {
   position: fixed;
   inset: 0;
@@ -1413,7 +1612,7 @@
   overflow-y: auto;
   padding: 2rem;
   border-radius: 0.75rem;
-  background: var(--bridge-paywall-panel-bg, #ffffff);
+  background: var(--bridge-paywall-panel-bg, var(--bridge-bg, #ffffff));
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
 }
 
@@ -1422,4 +1621,95 @@
   font-size: 1.25rem;
   font-weight: 600;
   text-align: center;
+}
+
+/* ─── bridgeBillingRoutes() pages ─── */
+/* The default frame. A `frame` snippet replaces it entirely. */
+.bridge-billing-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: var(--bridge-billing-page-width, 60rem);
+  margin: 0 auto;
+  padding: var(--bridge-billing-page-padding, 3rem 1rem);
+}
+
+.bridge-billing-heading {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.bridge-billing-text {
+  margin: 0;
+  opacity: 0.8;
+}
+
+.bridge-billing-current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.bridge-billing-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+}
+
+.bridge-billing-action {
+  align-self: flex-start;
+  text-decoration: none;
+}
+
+/* ─── <bridge-paywall-page> ─── */
+.bridge-paywall-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: var(--bridge-billing-page-width, 60rem);
+  margin: 0 auto;
+  padding: var(--bridge-billing-page-padding, 3rem 1rem);
+}
+
+.bridge-paywall-page-heading {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+/* ─── bridgeAuthRoutes() pages ─── */
+/* The default frame — the centred container every guide page used to paste.
+   A `frame` snippet replaces it entirely. */
+.bridge-auth-page {
+  display: flex;
+  justify-content: center;
+  padding: var(--bridge-auth-page-padding, 3rem 1rem);
+}
+
+/* ─── Team seats (TBP-763) — shown instead of an enabled Invite when every seat is taken ─── */
+.bridge-team-seats-limit {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.875rem;
+  color: var(--bridge-muted, #6b7280);
+}
+
+/* ─── <bridge-quota-gate> (TBP-744) ─── */
+.bridge-quota-gate-limit {
+  margin-top: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--bridge-muted, #6b7280);
+}
+.bridge-quota-gate-limit a {
+  color: var(--bridge-primary, #4f46e5);
+}
+
+/* ─── <bridge-feature-flag upgrade> prompt (TBP-744) ─── */
+.bridge-feature-upgrade {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
 }

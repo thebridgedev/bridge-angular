@@ -7,7 +7,7 @@ You are wiring authentication into an Angular application that uses The Bridge.
 | You want | Mode | What you build | Config |
 |---|---|---|---|
 | Bridge owns the login UI | **Hosted** (default) | Nothing — no login page | No `loginRoute` |
-| Login inside your app, your styling | **SDK auth** | Your own routes rendering `<bridge-login-form>` | Set `loginRoute` |
+| Login inside your app | **SDK auth** | Nothing — `...bridgeAuthRoutes()` serves the pages | Set `loginRoute: '/auth/login'` |
 
 **One config field is the whole switch.** Adding `loginRoute` to `BridgeConfig` turns hosted mode off. If you are being redirected to a route you never built, that is why.
 
@@ -53,51 +53,21 @@ const bridgeConfig: BridgeConfig = {
 };
 ```
 
-## Step 2 — Build the auth pages
-
-Components are standalone — import them directly, no NgModule:
+## Step 2 — Spread the auth routes
 
 ```ts
-// src/app/auth/login-page.component.ts
-import { Component } from '@angular/core';
-import { LoginFormComponent } from '@nebulr-group/bridge-angular';
+// src/app/app.routes.ts
+import { bridgeAuthGuard, bridgeAuthRoutes } from '@nebulr-group/bridge-angular';
 
-@Component({
-  selector: 'app-login-page',
-  standalone: true,
-  imports: [LoginFormComponent],
-  template: `<bridge-login-form />`,
-})
-export class LoginPageComponent {}
+export const routes: Routes = [
+  ...bridgeAuthRoutes(),
+  { path: '', canActivateChild: [bridgeAuthGuard()], children: [/* your routes */] },
+];
 ```
 
-```ts
-// src/app/auth/signup-page.component.ts
-import { Component } from '@angular/core';
-import { SignupFormComponent } from '@nebulr-group/bridge-angular';
+That serves login, signup, the OAuth callback, set password (the address in every signup verification and password-reset email), forgot password, magic link, passkey setup and workspace selection. They are public by construction — no route rule needed, and no redirect loop.
 
-@Component({
-  selector: 'app-signup-page',
-  standalone: true,
-  imports: [SignupFormComponent],
-  template: `<bridge-signup-form />`,
-})
-export class SignupPageComponent {}
-```
-
-Register both as **public** routes, or the guard will redirect the login page to itself:
-
-```ts
-const routeConfig: RouteGuardConfig = {
-  defaultAccess: 'protected',
-  rules: [
-    { match: '/auth/login', public: true },
-    { match: '/auth/signup', public: true },
-  ],
-};
-```
-
-That redirect loop is the most common mistake in this guide, and it presents as a hung page rather than an error.
+Customise only as far as needed: `--bridge-*` CSS tokens; `bridgeAuthRoutes({ frame: AuthLayoutComponent, heading: (page) => … })`; replace one page with `overrides: { login: { component: MyLoginComponent } }` (a page you own renders `<bridge-login-form (login)="…">` and navigates itself).
 
 ## Step 3 — Guard the rest
 
@@ -112,7 +82,7 @@ Inject `AuthService` for auth state and `ProfileService` for profile fields. For
 ## Common mistakes
 
 - **Hand-rolling a password form** instead of `<bridge-login-form>` — loses magic link, passkeys, MFA and workspace selection, all configured server-side.
-- **Forgetting to mark the login route public** — infinite redirect.
+- **Writing login/signup/callback pages by hand** — `bridgeAuthRoutes()` already serves them; a hand-written set usually forgets `set-password/:token`, which every signup email links to.
 - **Setting `loginRoute` while expecting hosted login**, or the reverse.
 - **Trusting auth state for authorization.** It says a session exists, not what it may do.
 - **Expecting an NgModule.** These are standalone components; import them into `imports: []`.

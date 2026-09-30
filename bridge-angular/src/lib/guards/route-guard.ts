@@ -17,6 +17,20 @@ import {
 } from '../core/pending-authorization-change';
 import { AuthService } from '../shared/services/auth.service';
 import { logger } from '../shared/logger';
+import { openFeatureUpgrade } from '../billing/quota-refusal';
+import {
+  appUsesBilling,
+  isPaywallExempt,
+  resolveBillingPaths,
+  type BridgeBillingPaths,
+} from '../routing/billing-paths';
+
+/**
+ * TBP-744 — route `data` key that marks a route public for `bridgeAuthGuard`,
+ * whatever the route rules say. `bridgeAuthRoutes()` sets it on every sign-in
+ * page, so they work even when spread inside a guarded parent.
+ */
+export const BRIDGE_PUBLIC_ROUTE = 'bridgePublic';
 
 export type FlagRequirement = string | { any: string[] } | { all: string[] };
 
@@ -211,7 +225,7 @@ async function getNavigationDecision(
   config: RouteGuardConfig,
   authService: AuthService,
   bridge: BridgeService,
-  paywallRoute?: string,
+  billingPaths: BridgeBillingPaths | undefined,
   isAuthCallbackInFlight = false,
   loginRoute?: string,
   attempted?: string,
@@ -294,31 +308,37 @@ async function getNavigationDecision(
     }
   }
 
-  // Paywall redirect — the Angular analogue of bridge-svelte's BridgeBootstrap
-  // paywall gate (BridgeBootstrap.ts §2b). Fires before a protected page renders.
-  // Only redirects when:
-  //   - billing.paywallRoute is configured
-  //   - the current path is not already the paywall route (no redirect loop)
-  //   - the tenant is authenticated but has not selected a plan
-  //   - the app has not opted out via paymentsAutoRedirect: false
-  //   - the navigation is not an in-flight auth/checkout callback
-  // The last guard is essential: a Stripe return lands on the OAuth callback
-  // while shouldSelectPlan is still true (the plan isn't confirmed until the
-  // callback POSTs confirm-checkout). Without this exemption the paywall gate
-  // would bounce the callback to the paywall route and the checkout would never
-  // be confirmed. Fails open: any error fetching subscription status allows nav.
+  // Paywall redirect — the Angular analogue of bridge-svelte's paywall gate.
+  // Fires before a protected page renders. Only redirects when:
+  //   - the paywall is not turned off (`billing.paywallRoute: false`); it
+  //     defaults to `/subscription/plan`, served by `bridgeBillingRoutes()`
+  //     (TBP-744, mirrors svelte TBP-702)
+  //   - an explicit paywallRoute always applies; the default only when the app
+  //     has plans — an app without billing has only plan-less workspaces
+  //   - the current path is not the paywall (no loop) or the payment-error
+  //     page (a failed checkout must be readable)
+  //   - the tenant is authenticated but has not selected a plan, and the app
+  //     has not opted out via paymentsAutoRedirect: false
+  //   - the navigation is not an in-flight auth/checkout callback: a Stripe
+  //     return lands on the OAuth callback while shouldSelectPlan is still
+  //     true, and bouncing it would stop the checkout from being confirmed.
+  // Fails open: any error fetching subscription status allows nav.
+  const paywallRoute = billingPaths?.paywallRoute ?? null;
   if (
+    billingPaths &&
     paywallRoute &&
     authenticated &&
-    pathname !== paywallRoute &&
+    !isPaywallExempt(pathname, billingPaths) &&
     !isAuthCallbackInFlight
   ) {
     try {
       // shouldRedirectToPaywall (auth-core) bundles the subscription-status fetch +
-      // the shouldSelectPlan/paymentsAutoRedirect decision (TBP-369), shared with
-      // bridge-svelte/react/nextjs. The outer guards (paywallRoute, authenticated,
-      // not-paywall-path, not-callback-in-flight) stay here.
-      if (await authService.getBridgeAuth().shouldRedirectToPaywall()) {
+      // the shouldSelectPlan/paymentsAutoRedirect decision (TBP-369).
+      const auth = authService.getBridgeAuth();
+      if (await auth.shouldRedirectToPaywall()) {
+        if (billingPaths.paywallIsDefault && !appUsesBilling(await auth.getPlans())) {
+          return { type: 'allow' };
+        }
         logger.debug(`[route-guard] paywall redirect ${pathname} → ${paywallRoute}`);
         return { type: 'redirect', to: paywallRoute };
       }
@@ -359,7 +379,9 @@ export function __resetBridgeRouteGuardState(): void {
  * "already decided" state, so there is no first-navigation window (TBP-653).
  */
 export function bridgeAuthGuard(): CanActivateFn {
-  return async (_route, state) => {
+  return async (route, state) => {
+    // TBP-744 — a page `bridgeAuthRoutes()` serves is public by construction.
+    if (route?.data?.[BRIDGE_PUBLIC_ROUTE] === true) return true;
     const deps: GuardDeps = {
       configService: inject(BridgeConfigService),
       authService: inject(AuthService),
@@ -382,6 +404,15 @@ export function bridgeAuthGuard(): CanActivateFn {
         // drops any query on it, which would silently discard the return target
         // the login branch just attached. `parseUrl` keeps it.
         if (outcome.restriction) {
+          // TBP-744 — someone reached a route whose flag is off because of the
+          // plan: the upgrade dialog explains it (svelte TBP-756). Only on this
+          // navigation, never on a background re-check.
+          if (outcome.restriction.reason === 'plan') {
+            openFeatureUpgrade({
+              flag: outcome.restriction.flag,
+              feature: outcome.restriction.feature ?? null,
+            });
+          }
           // TBP-756 — the page redirected to learns why (navigation state).
           return new RedirectCommand(router.parseUrl(outcome.to) as UrlTree, {
             state: { [BRIDGE_RESTRICTION_STATE_KEY]: outcome.restriction },
@@ -457,18 +488,18 @@ async function decideNavigation(url: string, deps: GuardDeps): Promise<GuardOutc
     return { type: 'deny' };
   }
 
-  // Read the optional billing.paywallRoute and loginRoute. Tolerate config not
-  // being loaded (the route guard must never throw on a missing config).
-  let paywallRoute: string | undefined;
+  // Read the billing destinations and loginRoute. Tolerate config not being
+  // loaded (the route guard must never throw on a missing config).
+  let billingPaths: BridgeBillingPaths | undefined;
   let loginRoute: string | undefined;
   let configReturnTo: ReturnToConfig | undefined;
   try {
     const cfg = configService.getConfig();
-    paywallRoute = cfg.billing?.paywallRoute;
+    billingPaths = resolveBillingPaths(cfg.billing);
     loginRoute = cfg.loginRoute;
     configReturnTo = cfg.returnTo;
   } catch {
-    paywallRoute = undefined;
+    billingPaths = undefined;
     loginRoute = undefined;
     configReturnTo = undefined;
   }
@@ -509,7 +540,7 @@ async function decideNavigation(url: string, deps: GuardDeps): Promise<GuardOutc
     routeConfig,
     authService,
     bridge,
-    paywallRoute,
+    billingPaths,
     isAuthCallbackInFlight,
     effectiveLoginRoute,
     attempted,

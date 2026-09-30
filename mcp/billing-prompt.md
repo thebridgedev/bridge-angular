@@ -98,7 +98,7 @@ It reads `useBridge().subscription` (the Billing 2.0 lifecycle snapshot from aut
 | `onActionClick` | `(state) => void` | — | Override the default CTA click handler |
 | `actionHref` | `string` | — | CTA destination for this instance. Overrides `billing.manageRoute` config; `onActionClick` takes precedence over both |
 
-The default CTA navigates to `billing.manageRoute` from the Bridge config, falling back to `/billing`. Since this guide's plan page lives at `/subscription`, set `billing: { manageRoute: '/subscription' }` in `provideBridge()` (see Step 2b's config example).
+The default CTA navigates to `billing.manageRoute` from the Bridge config, default `/subscription` — the page `...bridgeBillingRoutes()` serves.
 
 ## Step 2b — Plan-selection paywall (default)
 
@@ -134,9 +134,9 @@ const bridgeConfig: BridgeConfig = {
   apiBaseUrl: environment.bridgeApiBaseUrl || undefined,
   billing: {
     paywallRoute: '/welcome',
-    paymentErrorRoute: '/payment-error',
+    paymentErrorRoute: '/subscription/error', // the default
     // Default destination of the Upgrade/Manage CTA in <bridge-billing-notice>
-    // and <bridge-quota-banner>. Defaults to '/billing'.
+    // and <bridge-quota-banner>. Defaults to '/subscription'.
     manageRoute: '/subscription',
   },
 };
@@ -158,7 +158,9 @@ Skip if the plans have no per-resource limits or feature differences.
 
 > Quotas and entitlements were configured in the master prompt (or the Bridge admin → **Plans**) via `bridge plan quota set` and `bridge plan entitlement set`. This step only surfaces them.
 
-To show a live quota counter, drop in `<bridge-quota-banner metric="ai_completions" />` — it renders nothing below 80% of the cap, then a warning at 80–94% and a critical notice at ≥95%. It reads `useBridge().quota(metric)` (via `createQuotaSignal(metric)`) and ticks live as usage is reported, no polling. Inputs: `metric` (required), `label`, `onActionClick`, `actionHref` (Upgrade CTA destination; defaults to `billing.manageRoute` config → `/billing`).
+To show a live quota counter, drop in `<bridge-quota-banner metric="ai_completions" />` — it renders nothing below 80% of the cap, then a warning at 80–94% and a critical notice at ≥95%. It reads `useBridge().quota(metric)` (via `createQuotaSignal(metric)`) and ticks live as usage is reported, no polling. Inputs: `metric` (required), `label`, `onActionClick`, `actionHref` (Upgrade CTA destination; defaults to `billing.manageRoute` config → `/subscription`).
+
+**Plan limits, lowest level first.** Level 0 needs no page code: with `bridgeInterceptor` provided, a `402 QUOTA_EXCEEDED` from your backend (bridge-nestjs `@RequireQuota`) opens the upgrade dialog. Level 1: `<bridge-quota-gate metric="tickets">` around the button (or `[bridgeQuotaGate]="'tickets'"` on it), and `<bridge-feature-flag key="analytics" [upgrade]="true">` around a paid feature. Level 2: `injectQuota('tickets')` for your own UI. Do not write a quota `if`, a "limit reached" toast, or a `/quota` endpoint.
 
 To gate a feature by entitlement, read `bridge.tenant.entitlements` from `BridgeService`. Its `snapshot` is a signal, so a `computed` over it keeps the template current:
 

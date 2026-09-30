@@ -10,144 +10,71 @@ npm i @nebulr-group/bridge-angular
 
 ## 2. Configuration (`app.config.ts`)
 
-Initialize Bridge with `provideBridge` in your application config. For hosted auth, you only need `appId` and a `routeConfig`. No `loginRoute` is needed because Bridge redirects unauthenticated users to the hosted login page automatically.
+Initialize Bridge with `provideBridge` in your application config. For hosted auth you only need `appId` (plus `apiBaseUrl` for a stage or local app). No `loginRoute`: without it, Bridge sends unauthenticated visitors to the hosted login page.
 
 ```typescript
 // src/app/app.config.ts
 import { ApplicationConfig } from '@angular/core';
 import { provideRouter } from '@angular/router';
-import { provideBridge, type BridgeConfig, type RouteGuardConfig } from '@nebulr-group/bridge-angular';
+import { provideBridge } from '@nebulr-group/bridge-angular';
+import { environment } from '../environments/environment';
 import { routes } from './app.routes';
-
-const config: BridgeConfig = {
-  appId: import.meta.env.NG_APP_BRIDGE_APP_ID,
-  // Defaults to production. Pass it for a stage/local app, or every call
-  // silently goes to the production API and signup fails with "Not Found".
-  apiBaseUrl: import.meta.env.NG_APP_BRIDGE_API_BASE_URL || undefined,
-};
-
-const routeConfig: RouteGuardConfig = {
-  rules: [
-    { match: '/', public: true },
-    { match: /^\/auth($|\/)/, public: true },
-  ],
-  defaultAccess: 'protected',
-};
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideRouter(routes),
-    provideBridge(config, routeConfig),
+    provideBridge({
+      appId: environment.bridgeAppId,
+      // Unset means production. The hosted pages follow it on Bridge's
+      // domains (api-stage.thebridge.dev → auth-stage.thebridge.dev).
+      apiBaseUrl: environment.bridgeApiBaseUrl,
+    }),
   ],
 };
 ```
 
 Key points:
-- **No `loginRoute`**: without it, Bridge redirects to the hosted login page instead of an in-app route.
-- **`defaultAccess: 'protected'`**: all routes require auth unless explicitly marked `public`.
-- **`provideBridge` runs via `APP_INITIALIZER`**: it initializes auth, feature flags, and the live channel before the app renders, so no bootstrap component or ready-gating is needed. Bridge requires client-side rendering (Angular apps are client-rendered by default).
+- **Configuration is code**: Angular has no environment-variable convention, so values come from your own `environment.ts`. Each option resolves as *explicit option > default*; an empty string is unset; a missing `appId` throws, naming the option.
+- **Every route is protected by default** (`defaultAccess: 'protected'`). Pass a second argument, `{ rules: [{ match: '/', public: true }] }`, to open routes.
+- **`provideBridge` runs via `APP_INITIALIZER`**: auth, feature flags and the live channel are ready before the app renders. Bridge requires client-side rendering.
 
-## 3. Add the route guard
-
-Apply `bridgeAuthGuard` via `canActivateChild` on the root route so every child route is checked automatically.
+## 3. Routes: the guard and the callback page
 
 ```typescript
 // src/app/app.routes.ts
 import { Routes } from '@angular/router';
-import { bridgeAuthGuard } from '@nebulr-group/bridge-angular';
+import { bridgeAuthGuard, bridgeAuthRoutes } from '@nebulr-group/bridge-angular';
 import { HomeComponent } from './pages/home/home.component';
-import { OAuthCallbackComponent } from './pages/oauth-callback/oauth-callback.component';
-import { ProtectedComponent } from './pages/protected/protected.component';
 
 export const routes: Routes = [
+  ...bridgeAuthRoutes(),   // includes /auth/oauth-callback, where the hosted login returns
   {
     path: '',
     canActivateChild: [bridgeAuthGuard()],
-    children: [
-      { path: '', component: HomeComponent },
-      { path: 'auth/oauth-callback', component: OAuthCallbackComponent },
-      { path: 'protected', component: ProtectedComponent },
-    ],
+    children: [{ path: '', component: HomeComponent }],
   },
 ];
 ```
 
-## 4. Add the callback route
+`bridgeAuthRoutes()` serves `/auth/oauth-callback`: it exchanges the code, then lands on the page the visitor originally asked for (or `/`). It also confirms a returning Stripe checkout. In hosted mode its other pages point at the hosted login, so switching to in-app sign-in later is one config line (`loginRoute: '/auth/login'`).
 
-Angular requires a route and component to exist so it doesn't return a 404 when Bridge redirects back to your app. The component exchanges the code for tokens and redirects into your app:
+## 4. That's it: no login page needed
 
-```typescript
-// src/app/pages/oauth-callback/oauth-callback.component.ts
-import { Component, OnInit } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
-import { AuthService } from '@nebulr-group/bridge-angular';
+With hosted auth, Bridge redirects unauthenticated users to the hosted login UI and back to `/auth/oauth-callback`.
 
-@Component({
-  selector: 'app-oauth-callback',
-  standalone: true,
-  template: `
-    <div style="text-align: center; padding: 2rem;">
-      <h1>Signing you in…</h1>
-      <p>You'll be redirected shortly.</p>
-    </div>
-  `,
-})
-export class OAuthCallbackComponent implements OnInit {
-  constructor(
-    private route: ActivatedRoute,
-    private router: Router,
-    private authService: AuthService,
-  ) {}
-
-  async ngOnInit(): Promise<void> {
-    const code = this.route.snapshot.queryParamMap.get('code');
-    if (code) {
-      try {
-        await this.authService.handleCallback(code);
-      } catch {
-        /* fall through to redirect */
-      }
-    }
-    await this.router.navigate(['/']);
-  }
-}
-```
-
-## 5. That's it: no login page needed
-
-With hosted auth, Bridge automatically redirects unauthenticated users to the Bridge hosted login UI. When the user completes authentication on the hosted page, they are redirected back to the callback route you created in step 4.
-
-You do not need to create any login or signup pages.
-
-## 6. Configuration
-
-The `config` object you pass to `provideBridge` is a `BridgeConfig`. The most common fields:
+## 5. Configuration
 
 | Field | Default | Description |
 |-------|---------|-------------|
 | `appId` | **(required)** | Your Bridge app ID |
 | `callbackUrl` | `<origin>/auth/oauth-callback` | Where the hosted login page redirects back to |
 | `defaultRedirectRoute` | `'/'` | Route to land on after login |
-| `loginRoute` | (unset) | Declared but not used by the route guard yet; unauthenticated users always go to the hosted page. See the [config reference](/auth/config/#login-route) |
-| `apiBaseUrl` | `https://api.thebridge.dev` | Root URL for the Bridge API (dev override) |
-| `cloudViewsUrl` | `https://api.thebridge.dev/cloud-views` | Bridge cloud-views base URL (dev override) |
+| `loginRoute` | (unset = hosted) | Set `'/auth/login'` for in-app sign-in |
+| `apiBaseUrl` | `https://api.thebridge.dev` | Bridge API address, for a stage/local app |
+| `hostedUrl` | follows `apiBaseUrl` | Hosted pages, for a local/self-hosted Bridge |
 | `debug` | `false` | Enable debug logging |
 
-See the [Configuration reference](/auth/config/) for the full list (base URLs, billing routes).
-
-Rather than hardcoding environment-specific values, keep them in env config and read them with the `NG_APP_` prefix (via `@ngx-env/builder` or your environment files), so values reach the browser bundle:
-
-```env
-NG_APP_BRIDGE_APP_ID=your-app-id-here
-NG_APP_BRIDGE_DEFAULT_REDIRECT_ROUTE=/dashboard
-```
-
-```typescript
-const config: BridgeConfig = {
-  appId: import.meta.env.NG_APP_BRIDGE_APP_ID,
-  defaultRedirectRoute: import.meta.env.NG_APP_BRIDGE_DEFAULT_REDIRECT_ROUTE ?? '/',
-};
-```
+See the [Configuration reference](/auth/config/) for the full list, and [How Bridge works](../mechanisms.md) for the whole integration on one page.
 
 ## Next steps
 

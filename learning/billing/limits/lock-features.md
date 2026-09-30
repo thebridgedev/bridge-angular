@@ -42,6 +42,16 @@ export class AiSectionComponent {
 }
 ```
 
+Or declaratively, with an upgrade prompt where the plan does not include the feature — clicking it opens the upgrade dialog, naming the plans that do:
+
+```html
+<bridge-feature-flag key="use_ai" [upgrade]="true">
+  <app-ai-panel />
+</bridge-feature-flag>
+```
+
+A custom prompt gets `reason`, `feature` and `openUpgrade()` from the fallback template: `<p *bridgeFeatureFlagFallback="let reason = reason; let openUpgrade = openUpgrade">`. Nothing opens by itself — only a click, a plan-gated route, or a backend's `402 FEATURE_NOT_IN_PLAN` does.
+
 You get the best of both: the **entitlement** supplies plan eligibility (and stays correct across plan renames or a bespoke grant to one enterprise customer), while the **flag** adds everything flags give you *on top*: percentage rollouts within a plan, an instant kill switch, per-segment overrides, all without a code change. See the [Feature Flags → Target by plan or role](/feature-flags/targeting/by-plan-or-role/) guide for the full list of `bridge:billing.*` targeting attributes (plan, subscription status, quotas, entitlements).
 
 ## Using entitlements standalone
@@ -69,6 +79,16 @@ export class AiSectionComponent {
   constructor(private bridge: BridgeService) {}
 }
 ```
+
+Or with the structural directive, which renders neither branch until Bridge has answered (so a paying workspace never sees the upgrade prompt flash):
+
+```html
+<app-ai-panel *bridgeEntitled="'ai_completions'; else upgrade; loading: wait" />
+<ng-template #upgrade><a routerLink="/subscription">Upgrade for AI</a></ng-template>
+<ng-template #wait>…</ng-template>
+```
+
+`injectEntitlements()` returns the same as a signal (`ready`, `can(key)`, `all`). In development the first direct check logs a one-time note that the standard is a flag.
 
 Or check imperatively (synchronous, fail-closed: `false` until the snapshot lands):
 

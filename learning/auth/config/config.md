@@ -13,10 +13,11 @@ Call `provideBridge()` from your `app.config.ts` providers, passing it a `Bridge
 import { ApplicationConfig } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideBridge, type BridgeConfig, type RouteGuardConfig } from '@nebulr-group/bridge-angular';
+import { environment } from '../environments/environment';
 import { routes } from './app.routes';
 
 const config: BridgeConfig = {
-  appId: import.meta.env.NG_APP_BRIDGE_APP_ID,
+  appId: environment.bridgeAppId,
 };
 
 const routeConfig: RouteGuardConfig = {
@@ -39,7 +40,7 @@ Signature:
 
 ```typescript
 provideBridge(
-  config: BridgeConfig | string,  // config object, or just the appId as a string
+  config: Partial<BridgeConfig> | string,  // config object, or just the appId as a string
   routeConfig?: RouteGuardConfig, // default: { rules: [], defaultAccess: 'protected' }
 ): EnvironmentProviders
 ```
@@ -50,6 +51,15 @@ provideBridge(
 > runtime, and initializes feature flags, once, in order.
 
 Bootstrap is idempotent: calling it again after it has completed is a no-op.
+
+## How each option is resolved
+
+The same precedence as every Bridge plugin, with the environment step empty — Angular has no environment-variable convention, so configuration stays in code:
+
+1. **The option you pass** to `provideBridge()` wins.
+2. Otherwise **the default** applies.
+
+An empty string counts as unset (so `apiBaseUrl: environment.apiBaseUrl ?? ''` means production, not `''`). With no `appId`, `provideBridge()` throws and names the option. `hostedUrl` follows `apiBaseUrl` on Bridge's own domains (`api-stage.thebridge.dev` → `auth-stage.thebridge.dev`); in development the console says once when an app runs against production or cannot find its hosted pages.
 
 ## Reading the resolved config
 
@@ -97,13 +107,13 @@ const config: BridgeConfig = {
 
 > **Set this for any non-production app, and set it in `BridgeConfig`.** It defaults to production and the failure is silent: a stage or local app ID pointed at the production API does not exist there, so signup comes back `Not Found` with nothing in the console naming the cause. The SDK reads no environment variables of its own — reading `NG_APP_BRIDGE_API_BASE_URL` (or an `environment.*` value) and passing it as `apiBaseUrl` is your app's job.
 
-> **`authBaseUrl` and `cloudViewsUrl` are not read.** They exist on the `BridgeConfig` type and carry defaults, but nothing in the SDK consumes them — `provideBridge()` forwards only `appId` and `apiBaseUrl` to the auth core, which derives its auth base URL from `apiBaseUrl`. Setting either one has no effect; point a self-hosted or dedicated environment at `apiBaseUrl` instead.
+> **`authBaseUrl` and `cloudViewsUrl` are not read.** They exist on the `BridgeConfig` type and carry defaults, but nothing in the SDK consumes them — `provideBridge()` forwards only `appId`, `apiBaseUrl` and `hostedUrl` to the auth core, which derives its auth base URL from `apiBaseUrl`. Setting either one has no effect; point a self-hosted or dedicated environment at `apiBaseUrl` instead.
 
 ## Login route
 
 Unauthenticated users who hit a protected route are redirected to Bridge's hosted login page. Hosted login is what you get out of the box.
 
-Set `loginRoute` and `bridgeAuthGuard()` sends unauthenticated users to that in-app route instead — SDK mode. Build the page with [`bridge-login-form`](/auth/ui/email-password/) and register the route itself as public. Either way the page they were heading for is remembered and restored after login; see [Route guards](/auth/securing/route-guards/#returning-to-the-page-they-asked-for).
+Set `loginRoute: '/auth/login'` and `bridgeAuthGuard()` sends unauthenticated users to that in-app route instead — SDK mode. `...bridgeAuthRoutes()` in your router already serves it (and every other sign-in page); to build your own, see [`bridge-login-form`](/auth/ui/email-password/). Either way the page they were heading for is remembered and restored after login; see [Route guards](/auth/securing/route-guards/#returning-to-the-page-they-asked-for).
 
 ## All config options
 
@@ -116,8 +126,12 @@ Set `loginRoute` and `bridgeAuthGuard()` sends unauthenticated users to that in-
 | `callbackUrl` | `string` | `${origin}/auth/oauth-callback` | Where the login flow redirects back to after a successful login. See [Callback URL](#callback-url) |
 | `defaultRedirectRoute` | `string` | `'/'` | Route to redirect to after login |
 | `loginRoute` | `string` | (unset) | In-app route of your login page. Set it for SDK mode; leave unset for hosted login. See [Login route](#login-route) |
-| `billing.paywallRoute` | `string` | (none) | Route to redirect to when the workspace (called a *tenant* in the API) has no plan selected |
-| `billing.paymentErrorRoute` | `string` | `'/payment-error'` | Route to redirect to when a Stripe checkout confirmation fails |
+| `hostedUrl` | `string` | follows `apiBaseUrl`, else `'https://auth.thebridge.dev'` | Bridge's hosted sign-in pages. Set it only for a local or self-hosted Bridge |
+| `billing.paywallRoute` | `string \| false` | `'/subscription/plan'` | Where a workspace (called a *tenant* in the API) with no plan is redirected. The default applies only to an app with plans; `false` turns the redirect off |
+| `billing.paymentErrorRoute` | `string` | `'/subscription/error'` | Where a failed Stripe checkout confirmation lands |
+| `billing.manageRoute` | `string` | `'/subscription'` | The subscription page — where Upgrade/Manage buttons and the upgrade dialog link |
+| `billing.upgradeDialog` | `boolean \| Type` | `true` | The dialog shown on a plan-limit `402`. `false` turns it off; a standalone component replaces it and receives `BridgeUpgradeDialogInputs` |
+| `billing.apiOrigins` | `string[]` | (none) | Origins of your own backend when it is not the page's origin; `bridgeInterceptor` sends the user's token to, and reads plan-limit refusals from, these |
 | `locale` | `string` | `'en'` | UI language for the SDK auth components, e.g. `'sv'`. Region variants (`'sv-SE'`) resolve to their base language; an unknown locale falls back to English |
 | `messages` | `MessageOverrides` | (none) | Per-key copy overrides applied on top of the locale. See [Translating the auth UI](#translating-the-auth-ui) |
 | `returnTo.enabled` | `boolean` | `true` | Set `false` to send every login to `defaultRedirectRoute` regardless of where the visitor was heading |
@@ -185,7 +199,7 @@ interface RouteRule {
 }
 ```
 
-Billing gating isn't declared per rule: setting `billing.paywallRoute` on `BridgeConfig` makes the guard redirect an authenticated workspace that hasn't selected a plan to that route before any protected page renders.
+Billing gating isn't declared per rule: the guard redirects an authenticated workspace that hasn't selected a plan to `billing.paywallRoute` (default `/subscription/plan`, for an app that has plans) before any protected page renders. The pages `bridgeAuthRoutes()` serves are public by construction: they carry `data.bridgePublic`, which the guard honours, so they need no rule.
 
 See [Route guards](/auth/securing/route-guards/) for a walkthrough.
 

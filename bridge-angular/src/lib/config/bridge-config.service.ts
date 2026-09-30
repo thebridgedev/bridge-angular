@@ -1,7 +1,8 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, computed, isDevMode, signal } from '@angular/core';
 import type { RouteGuardConfig } from '../guards/route-guard';
 import { logger, setLoggerConfigGetter } from '../shared/logger';
 import type { BridgeConfig } from '../types/config';
+import { configWarnings, resolveBridgeConfig } from './resolve-config';
 
 interface ConfigState {
   config: BridgeConfig | null;
@@ -31,11 +32,14 @@ export class BridgeConfigService {
   readonly configReady = computed(() => this._state().loaded);
   readonly config = computed(() => this._state().config);
 
-  initConfig(config: BridgeConfig, routeConfig?: RouteGuardConfig): void {
-    if (!config?.appId) {
-      throw new Error(
-        'Bridge appId is required but was not provided in bridge configuration.',
-      );
+  initConfig(config: Partial<BridgeConfig> | string, routeConfig?: RouteGuardConfig): void {
+    // TBP-744 — explicit option > default; an empty value is unset; the hosted
+    // pages follow the API address. Throws, naming the option, with no app id.
+    const resolved = resolveBridgeConfig(config);
+    if (isDevMode()) {
+      for (const warning of configWarnings(typeof config === 'string' ? {} : config, resolved)) {
+        logger.warn(warning);
+      }
     }
 
     const DEFAULT_CALLBACK_PATH = '/auth/oauth-callback';
@@ -47,11 +51,11 @@ export class BridgeConfigService {
     const merged: BridgeConfig = {
       ...DEFAULT_CONFIG,
       callbackUrl: defaultCallback,
-      ...config,
+      ...resolved,
     };
 
-    if (config.callbackUrl) {
-      merged.callbackUrl = config.callbackUrl;
+    if (resolved.callbackUrl) {
+      merged.callbackUrl = resolved.callbackUrl;
     } else if (!merged.callbackUrl && defaultCallback) {
       merged.callbackUrl = defaultCallback;
     }

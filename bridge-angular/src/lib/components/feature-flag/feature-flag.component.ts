@@ -9,6 +9,13 @@
  * Two content slots (Angular content projection):
  *   - default slot — rendered when the flag passed.
  *   - `*bridgeFeatureFlagFallback` structural directive — rendered when off.
+ *     TBP-756 — its template context says why the feature is off
+ *     ({@link FeatureFlagFallbackContext}): `reason` is `'plan'` (an upgrade
+ *     alone would turn it on), `'permission'` (this person's role or
+ *     privileges), `'off'`, `'rule'`, `'rollout'`, or undefined when Bridge
+ *     has not said (the flag is not loaded yet); `feature` is, with `'plan'`,
+ *     the plan feature the rule asks for; `$implicit` / `value` is the value
+ *     Bridge decided.
  *
  * Inputs mirror svelte's `<FeatureFlag>`:
  *   - `key` (required) — the flag key.
@@ -19,6 +26,13 @@
  *   <bridge-feature-flag key="new-dashboard" [defaultValue]="false">
  *     <new-dashboard />
  *     <p *bridgeFeatureFlagFallback>Coming soon</p>
+ *   </bridge-feature-flag>
+ *
+ *   <bridge-feature-flag key="reports">
+ *     <app-reports />
+ *     <p *bridgeFeatureFlagFallback="let reason = reason">
+ *       @if (reason === 'plan') { <a routerLink="/billing">Upgrade for reports</a> }
+ *     </p>
  *   </bridge-feature-flag>
  */
 import {
@@ -32,8 +46,19 @@ import {
   type Signal,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import type { EvalContext, FlagEvalResult } from '@nebulr-group/bridge-auth-core';
+import type { EvalContext, FlagEvalResult, FlagOffReason } from '@nebulr-group/bridge-auth-core';
 import { BridgeService } from '../../core/bridge.service';
+
+/** TBP-756 — what a `<bridge-feature-flag>` fallback learns about why the feature is off. */
+export interface FeatureFlagFallbackContext<T = unknown> {
+  /** The value Bridge decided (`let value` / `let v = value`). */
+  $implicit: T;
+  value: T;
+  /** Why the feature is off; undefined when Bridge has not said. */
+  reason: FlagOffReason | undefined;
+  /** With `reason: 'plan'`, the plan feature the rule asks for. */
+  feature: string | undefined;
+}
 
 /** Structural directive marking the fallback slot of `<bridge-feature-flag>`. */
 @Directive({
@@ -41,7 +66,14 @@ import { BridgeService } from '../../core/bridge.service';
   standalone: true,
 })
 export class BridgeFeatureFlagFallbackDirective {
-  constructor(public templateRef: TemplateRef<unknown>) {}
+  constructor(public templateRef: TemplateRef<FeatureFlagFallbackContext>) {}
+
+  static ngTemplateContextGuard(
+    _dir: BridgeFeatureFlagFallbackDirective,
+    ctx: unknown,
+  ): ctx is FeatureFlagFallbackContext {
+    return true;
+  }
 }
 
 @Component({
@@ -52,7 +84,10 @@ export class BridgeFeatureFlagFallbackDirective {
     @if (result().passed) {
       <ng-content></ng-content>
     } @else if (fallback) {
-      <ng-container [ngTemplateOutlet]="fallback.templateRef"></ng-container>
+      <ng-container
+        [ngTemplateOutlet]="fallback.templateRef"
+        [ngTemplateOutletContext]="offContext()"
+      ></ng-container>
     }
   `,
 })
@@ -83,6 +118,9 @@ export class FeatureFlagComponent<T = boolean> {
   /** Reactive evaluation result — re-runs whenever the flag changes. */
   protected readonly result: Signal<FlagEvalResult<T>>;
 
+  /** TBP-756 — the fallback's template context: the value and why it is off. */
+  protected readonly offContext: Signal<FeatureFlagFallbackContext<T>>;
+
   constructor(private bridge: BridgeService) {
     this.result = computed(() => {
       // Reactive dependency on the flag-cache version map so this re-runs on
@@ -93,6 +131,10 @@ export class FeatureFlagComponent<T = boolean> {
       const ctx = this._context();
       if (!key) return { passed: false, value: def };
       return this.bridge.evaluate<T>(key, def, ctx);
+    });
+    this.offContext = computed(() => {
+      const r = this.result();
+      return { $implicit: r.value, value: r.value, reason: r.reason, feature: r.feature };
     });
   }
 }

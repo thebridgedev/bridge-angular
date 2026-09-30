@@ -114,7 +114,6 @@ class StubAuthService {
       getPlans: async () => [],
     };
   }
-  /** The runtime's on-open catch-up refresh. */
   async maybeRefreshNow(): Promise<boolean> {
     return !!(await this.getBridgeAuth().refreshTokens());
   }
@@ -220,32 +219,51 @@ describe('reauthorizes on every token value change (TBP-644)', () => {
   });
 });
 
-describe('the self-induced refresh loop guard still holds (TBP-644)', () => {
-  it('the reconnect caused by a sign-in does not fire the on-open refresh; a genuine one does', async () => {
+// TBP-700 replaced the TBP-644 "self-induced reconnects skip the refresh"
+// guard: that skip is exactly how a role change published during our own
+// socket swap was lost for good. Every connect now reconciles with ONE
+// refresh, and the loop is broken by what the refresh returns instead — a
+// token that changes nothing does not replace the socket.
+describe('every connect reconciles once without looping (TBP-644, TBP-700)', () => {
+  it('the reconnect caused by a sign-in reconciles once and stays on its socket; a genuine one reconciles too', async () => {
     await start();
-    connectOk(lastWs());
-    setTokens(token());
-    await settle();
-    connectOk(lastWs());
+    connectOk(lastWs()); // anonymous — nothing to reconcile
     await settle();
     expect(auth.refreshCalls).toBe(0);
+
+    const t = token();
+    setTokens(t);
+    // Each refresh mints the same authority with a new iat, like the server.
+    auth.refreshImpl = async () => {
+      const next = token();
+      setTokens(next);
+      return { accessToken: next };
+    };
+    await settle();
+    connectOk(lastWs());
+    await settle();
+    expect(auth.refreshCalls).toBe(1);
+    expect(reauthCalls).toBe(1); // the sign-in's; the reconcile's token replaced nothing
 
     lastWs().close(1006);
     await settle(40);
     connectOk(lastWs());
     await settle();
-    expect(auth.refreshCalls).toBe(1);
+    expect(auth.refreshCalls).toBe(2);
+    expect(reauthCalls).toBe(1);
   });
 });
 
 describe('refreshAuthToken is wired (TBP-644)', () => {
-  it('a refused session refreshes once, reconnects with the NEW token, and does not refresh again on open', async () => {
+  it('a refused session refreshes once, reconnects with the NEW token, and the open reconciles once and stays', async () => {
     auth.tokens.set({ accessToken: token() });
     await start();
     connectOk(lastWs());
     lastWs().close(1006);
     await settle(40);
 
+    // The first connect's reconcile (TBP-700) already ran; count from here.
+    auth.refreshCalls = 0;
     const fresh = token();
     auth.refreshImpl = async () => {
       setTokens(fresh);
@@ -256,10 +274,14 @@ describe('refreshAuthToken is wired (TBP-644)', () => {
     expect(auth.refreshCalls).toBe(1);
     expect(presented(lastWs())).toBe(`Bearer ${fresh}`);
 
+    const sockets = FakeWebSocket.instances.length;
     connectOk(lastWs());
     await settle();
     expect(runtime.getRealtime()!.getState()).toBe('open');
-    expect(auth.refreshCalls).toBe(1);
+    // TBP-700 — the open reconciles once; it gets the token it already has,
+    // so the socket stays and nothing refreshes again.
+    expect(auth.refreshCalls).toBe(2);
+    expect(FakeWebSocket.instances.length).toBe(sockets);
   });
 
   it('a signed-out session has nothing to refresh', async () => {

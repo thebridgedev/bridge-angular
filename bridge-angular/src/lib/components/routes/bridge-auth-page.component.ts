@@ -74,7 +74,6 @@ export function bridgeAuthBase(segments: readonly string[], hasToken: boolean): 
           [signupHref]="base + '/signup'"
           [forgotPasswordHref]="base + '/forgot-password'"
           [magicLinkHref]="base + '/magic-link'"
-          [passkeySetupHref]="base + '/setup-passkey'"
           [messages]="options.messages"
           (login)="afterSignIn()"
         />
@@ -111,6 +110,7 @@ export function bridgeAuthBase(segments: readonly string[], hasToken: boolean): 
           [heading]="headingFor(page) ?? undefined"
           [messages]="options.messages"
           (complete)="afterSignIn()"
+          (expired)="goToLogin()"
         />
       } @else if (page === 'workspaces' && auth.isAuthenticated()) {
         <bridge-auth-form-wrapper [heading]="headingFor(page) ?? t('tenant.chooseHeading')">
@@ -186,6 +186,11 @@ export class BridgeAuthPageComponent implements OnInit {
 
   protected headingFor(page: BridgeAuthPage): string | null {
     return this.options.heading?.(page) ?? null;
+  }
+
+  /** An expired passkey-setup link goes back to sign-in, where a new one can be requested. */
+  protected goToLogin(): void {
+    void this.router.navigateByUrl(`${this.base}/login`);
   }
 
   protected afterSignIn(): void {

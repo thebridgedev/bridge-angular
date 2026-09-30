@@ -30,7 +30,7 @@ Legend: **present** (already on `main` before TBP-744) · **added** (TBP-744 / t
 | Route guard rules (`match`, `public`, `featureFlag`, `redirectTo`), return-to, flag reasons, re-check on authorization change | `bridgeAuthGuard()` | present |
 | Sign-in pages need a public rule | pages carry `data.bridgePublic`, honoured by the guard | added — **different**: stricter default, no rule needed |
 | `LoginForm`, `SignupForm`, `ForgotPassword`, `MagicLink`, `MfaChallenge`, `MfaSetup`, `TenantSelector`, `WorkspaceSelector`, `SsoButton` | `<bridge-login-form>` … standalone components | present |
-| Passkeys: `PasskeyLogin`, `PasskeySetup`, `PasskeyRequestSetupLink` | same | present |
+| Passkeys: `PasskeyLogin`, `PasskeySetup`, `PasskeyRequestSetupLink` (the WebAuthn ceremony via `@simplewebauthn/browser`; no passkey on the device → request a setup link in place) | same | fixed in the TBP-744 follow-up: the components called auth-core methods that do not exist and never asked the authenticator |
 | i18n (`locale`, `messages`, `createTranslator`) | same | present |
 | `readReturnTo`, `withReturnTo`, `sanitizeReturnTo` | re-exported | present |
 | Stores: `isAuthenticated`, `tokenStore`, `profileStore`, … | `AuthService` / `ProfileService` signals | different — Angular signals + DI instead of Svelte stores |

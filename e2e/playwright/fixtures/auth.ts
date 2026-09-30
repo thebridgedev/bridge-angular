@@ -134,28 +134,26 @@ export async function loginViaBridgeAuth(
 
   console.log(`[login] Redirected to auth page: ${page.url()}`);
 
-  const emailInput = page
-    .locator('#email, input[name="username"], input[type="email"]')
-    .first();
+  // Credentials. The hosted portal is a SINGLE-step form — email and password
+  // on one screen (bridge-svelte's `completeHostedPortalLogin`). This helper
+  // still drove the old two-step shape, email → "Continue" → password, so the
+  // stage run of 0.8.0-beta.1 timed out waiting for a Continue button that no
+  // longer exists (TBP-744).
+  const emailInput = page.getByRole('textbox', { name: 'Email' });
   await emailInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
   await emailInput.fill(email);
 
-  const continueButton = page
-    .locator('button[type="submit"]:has-text("Continue")')
-    .first();
-  await continueButton.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
-  await continueButton.click();
-
   const passwordInput = page
-    .locator('#password, input[name="password"], input[type="password"]')
+    .getByRole('textbox', { name: 'Password' })
+    .or(page.locator('input[type="password"]'))
     .first();
   await passwordInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
   await passwordInput.fill(password);
 
-  const signInButton = page
-    .locator('button[type="submit"]:has-text("Sign in")')
-    .first();
-  await signInButton.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
+  // The button is disabled until both fields validate, so wait for enabled
+  // rather than merely visible.
+  const signInButton = page.getByRole('button', { name: 'Sign in', exact: true });
+  await expect(signInButton).toBeEnabled({ timeout: MED_TIMEOUT });
   await signInButton.click();
 
   console.log(`[login] Submitted credentials, waiting for OAuth flow...`);

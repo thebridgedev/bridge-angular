@@ -1,69 +1,39 @@
+/**
+ * Create User (Sign Up) Flow
+ *
+ * A new account made through the app's own sign-up page, `/auth/signup`, which
+ * `bridgeAuthRoutes()` serves: email, first and last name → "Sign up" → the
+ * "Check your email" confirmation naming the address. The account is removed
+ * through the test-data API afterwards.
+ *
+ * TBP-744: this used to click "Login with Bridge", follow the redirect to the
+ * hosted portal and rewrite that address to the portal's signup page, expecting
+ * `#email` and a "Create account" button. The demo signs people up in the app
+ * now (the ten-line integration), and the hosted page no longer has that shape,
+ * so the stage run of 0.8.0-beta.1 timed out. Same shape as bridge-svelte's spec.
+ */
 import { expect, test } from '../../fixtures/auth';
-import { createCleanContext } from '../../fixtures/clean-page';
 import { LONG_TIMEOUT, MED_TIMEOUT } from '../../fixtures/timeouts';
 
 test.describe('Create User (Sign Up) Flow', () => {
-  test('sign up form creates user and shows success message', async ({
-    browser,
-    envConfig,
-    testDataClient,
-  }) => {
-    const { page, cleanup } = await createCleanContext(browser);
-
-    const signupEmail = `playwright-signup-${Date.now()}@example.com`;
-    const firstName = 'Playwright';
-    const lastName = 'Signup';
+  test('sign up form creates user and shows success message', async ({ page, testDataClient }) => {
+    const signupEmail = `iman+playwright-test-signup-${Date.now()}@nebulr.group`;
 
     try {
-      await page.goto('/');
+      await page.goto('/auth/signup');
 
-      const loginButton = page.locator('button:has-text("Login with Bridge")');
-      await expect(loginButton).toBeVisible({ timeout: MED_TIMEOUT });
-      await loginButton.click();
+      await page.locator('#signup-email').waitFor({ state: 'visible', timeout: MED_TIMEOUT });
+      await page.locator('#signup-email').fill(signupEmail);
+      await page.locator('#signup-first-name').fill('Playwright');
+      await page.locator('#signup-last-name').fill('Signup');
 
-      await page.waitForURL(
-        (url) => {
-          const u = url.toString();
-          return u.includes('/auth/') || u.includes('/login');
-        },
-        { timeout: LONG_TIMEOUT },
-      );
+      const submit = page.getByRole('button', { name: 'Sign up', exact: true });
+      await expect(submit).toBeEnabled({ timeout: MED_TIMEOUT });
+      await submit.click();
 
-      const loginUrl = new URL(page.url());
-      const signupUrl = `${loginUrl.origin}${loginUrl.pathname.replace(/\/login.*$/, '').replace(/\/?$/, '')}/signup`;
-      await page.goto(signupUrl);
-
-      await expect(
-        page.getByRole('heading', { name: /create an account/i }),
-      ).toBeVisible({ timeout: LONG_TIMEOUT });
-
-      const emailInput = page.locator('#email, input[name="email"]').first();
-      await emailInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
-      await emailInput.fill(signupEmail);
-
-      const firstNameInput = page.locator('#firstName, input[name="firstName"]').first();
-      await firstNameInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
-      await firstNameInput.fill(firstName);
-
-      const lastNameInput = page.locator('#lastName, input[name="lastName"]').first();
-      await lastNameInput.waitFor({ state: 'visible', timeout: MED_TIMEOUT });
-      await lastNameInput.fill(lastName);
-
-      const submitButton = page.locator('button[type="submit"]:has-text("Create account")');
-      await expect(submitButton).toBeVisible({ timeout: MED_TIMEOUT });
-      await submitButton.click();
-
-      await expect(
-        page.getByRole('heading', { name: /check your email/i }),
-      ).toBeVisible({ timeout: LONG_TIMEOUT });
-
-      await expect(page.getByText(/We sent an invite link to/i)).toBeVisible({
-        timeout: MED_TIMEOUT,
-      });
+      await expect(page.getByText('Check your email')).toBeVisible({ timeout: LONG_TIMEOUT });
       await expect(page.getByText(signupEmail)).toBeVisible({ timeout: MED_TIMEOUT });
     } finally {
-      await cleanup();
-
       try {
         await testDataClient.removeTestAccount(signupEmail);
       } catch (err: unknown) {
@@ -71,5 +41,12 @@ test.describe('Create User (Sign Up) Flow', () => {
         console.warn(`[create-user] Failed to remove signup account ${signupEmail}: ${msg}`);
       }
     }
+  });
+
+  test('signup page has login link', async ({ page }) => {
+    await page.goto('/auth/signup');
+
+    const loginLink = page.locator('a[href="/auth/login"]').first();
+    await expect(loginLink).toBeVisible({ timeout: MED_TIMEOUT });
   });
 });

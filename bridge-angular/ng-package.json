@@ -4,6 +4,15 @@
     "entryFile": "src/public-api.ts"
   },
   "dest": "dist",
-  "assets": [{ "input": "src/lib", "glob": "styles.css", "output": "." }],
-  "allowedNonPeerDependencies": ["@nebulr-group/bridge-auth-core"]
+  "assets": [
+    {
+      "input": "src/lib",
+      "glob": "styles.css",
+      "output": "."
+    }
+  ],
+  "allowedNonPeerDependencies": [
+    "@nebulr-group/bridge-auth-core",
+    "@simplewebauthn/browser"
+  ]
 }

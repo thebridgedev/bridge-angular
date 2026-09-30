@@ -1,12 +1,19 @@
 # Passkeys
 
 Passkey (WebAuthn) authentication lets users sign in with a biometric or device
-credential instead of a password. Requires `@simplewebauthn/browser` as a peer
-dependency.
+credential instead of a password. The browser ceremony runs through
+`@simplewebauthn/browser`, which ships as a dependency of
+`@nebulr-group/bridge-angular` and is loaded only when someone uses a passkey.
+
+> **You may not need these components.** The routes from `bridgeAuthRoutes()`
+> already show the passkey button on the login page when passkeys are on for the
+> app, and serve `/auth/setup-passkey/:token`, the page the setup email links to.
 
 ## PasskeyLogin
 
-A button that triggers passkey authentication via the browser's WebAuthn API.
+A button that signs in with a passkey: it fetches the options from Bridge, asks
+the browser's authenticator, and sends the signed answer back to Bridge. It
+renders nothing in a browser without WebAuthn.
 
 **Inputs & outputs:**
 
@@ -14,8 +21,9 @@ A button that triggers passkey authentication via the browser's WebAuthn API.
 |------|------|---------|-------------|
 | `(login)` | `EventEmitter<void>` | (none) | Called after successful passkey login |
 | `(error)` | `EventEmitter<Error>` | (none) | Called on error |
-| `(setupPasskey)` | `EventEmitter<void>` | (none) | Called when the user wants to set up a passkey instead |
-| `setupHref` | `string` | (none) | URL to navigate to when the user has no registered passkey, if nothing is bound to `(setupPasskey)` |
+| `(setupPasskey)` | `EventEmitter<void>` | (none) | Called when the authenticator finds no passkey (or the person cancels), so the page can offer to set one up. `<bridge-login-form>` uses it to show the request-a-setup-link step in place |
+| `setupHref` | `string` | (none) | URL to navigate to when the authenticator finds no passkey, if nothing is bound to `(setupPasskey)` |
+| `autofill` | `boolean` | `false` | Offer passkeys in the browser's autofill (conditional mediation) |
 | `label` | `string` | `'Continue with passkey'` | Button label text |
 
 ```typescript
@@ -55,6 +63,7 @@ Registers a new passkey using a setup token (emailed to the user).
 | `token` | `string` | **(required)** | The setup token from the URL |
 | `(complete)` | `EventEmitter<void>` | (none) | Called after passkey registration |
 | `(error)` | `EventEmitter<Error>` | (none) | Called on any registration error, including an expired or invalid token |
+| `(expired)` | `EventEmitter<void>` | (none) | When bound, an expired link shows a "Request new setup link" button that emits it. The built-in `/auth/setup-passkey/:token` page sends the person back to sign-in |
 | `loginHref` | `string` | `'/auth/login'` | Link shown after successful registration |
 
 ```typescript

@@ -390,7 +390,8 @@ describe('PasskeyRequestSetupLink sent view (TBP-631)', () => {
 
   /** Request the link successfully — the sent view is behind a real call. */
   async function sent(inputs: Record<string, unknown> = {}) {
-    mockApi = { sendPasskeySetupLink: resolvesLater(undefined) };
+    // auth-core's method; `sendPasskeySetupLink` never existed (TBP-744).
+    mockApi = { requestPasskeySetupLink: resolvesLater(undefined) };
     const fixture = fixtureFor(PasskeyRequestSetupLinkComponent as never, {
       initialEmail: EMAIL,
       ...inputs,

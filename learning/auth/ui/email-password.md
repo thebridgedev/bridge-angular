@@ -45,7 +45,7 @@ export class LoginPageComponent {
 | `showMagicLink` | `boolean` | auto: `magicLinkEnabled` from app config, `false` if unset | Show the magic link login option |
 | `magicLinkHref` | `string` | `'/auth/magic-link'` | Magic link request page URL |
 | `showPasskeys` | `boolean` | auto: `passkeysEnabled` from app config, `false` if unset | Show the passkey login button |
-| `passkeySetupHref` | `string` | `'/auth/setup-passkey'` | Passkey setup page URL |
+| `passkeySetupHref` | `string` | (none) | Where "no passkey on this device" sends the person. Unset, the form asks for their email in place and mails a passkey setup link |
 | `(login)` | `EventEmitter<void>` | (none) | Called after successful login (all steps complete) |
 | `(error)` | `EventEmitter<Error>` | (none) | Called on any login error |
 | `(onSsoClick)` | `EventEmitter<string>` | (none) | Called when an SSO button is clicked |

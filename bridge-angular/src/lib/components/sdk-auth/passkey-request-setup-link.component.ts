@@ -2,7 +2,7 @@
  * PasskeyRequestSetupLink — Angular port of bridge-svelte's
  * `sdk-auth/PasskeyRequestSetupLink.svelte`.
  *
- * Emails a passkey-setup link via `sendPasskeySetupLink(email)`. Mirrors react's
+ * Emails a passkey-setup link via auth-core's `requestPasskeySetupLink(email)`. Mirrors react's
  * `PasskeyRequestSetupLink.tsx`: emits `back` if a host wants to intercept the
  * "Back to login" action, otherwise renders a `loginHref` anchor.
  */
@@ -134,7 +134,8 @@ export class PasskeyRequestSetupLinkComponent extends TranslatableComponent impl
     this.errorMsg.set(null);
     this.loading.set(true);
     try {
-      await (this.authService.getBridgeAuth() as any).sendPasskeySetupLink(this.email);
+      // auth-core's name for it; `sendPasskeySetupLink` never existed (TBP-744).
+      await this.authService.getBridgeAuth().requestPasskeySetupLink(this.email);
       this.sent.set(true);
       this.sentEvent.emit();
     } catch (err: any) {

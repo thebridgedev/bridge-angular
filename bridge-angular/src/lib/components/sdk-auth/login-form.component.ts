@@ -38,6 +38,7 @@ import { TenantSelectorComponent } from './tenant-selector.component';
 import { SsoButtonComponent } from './sso-button.component';
 import { SsoProviderIconComponent } from './sso-provider-icon.component';
 import { PasskeyLoginComponent } from './passkey-login.component';
+import { PasskeyRequestSetupLinkComponent } from './passkey-request-setup-link.component';
 import { authErrorMessage, isOriginNotAllowed } from './shared/auth-error';
 
 function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[] {
@@ -67,6 +68,7 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
     SsoButtonComponent,
     SsoProviderIconComponent,
     PasskeyLoginComponent,
+    PasskeyRequestSetupLinkComponent,
   ],
   template: `
     @if (authState() === 'mfa-required') {
@@ -85,6 +87,14 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
           <span>{{ t('login.submitting') }}</span>
         </div>
       </bridge-auth-form-wrapper>
+    } @else if (step() === 'passkey-request') {
+      <!-- No passkey on this device: ask for the email and mail a setup link,
+           in place (mirrors bridge-svelte's passkey-request step, TBP-744). -->
+      <bridge-passkey-request-setup-link
+        [initialEmail]="email"
+        [messages]="messages"
+        (back)="goBackToCredentials()"
+      />
     } @else if (step() === 'forgot-password') {
       <bridge-auth-form-wrapper
         [heading]="fpEmailSent() ? null : t('forgot.headingRequest')"
@@ -200,11 +210,11 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
         @if (effectiveShowPasskeys()) {
           <div class="bridge-sso-row">
             <bridge-passkey-login
-              [setupHref]="passkeySetupHref"
               [messages]="messages"
               className="bridge-btn bridge-btn-secondary bridge-sso-btn"
               (login)="login.emit()"
               (error)="handleChildError($event)"
+              (setupPasskey)="openPasskeyRequest()"
             />
           </div>
         }
@@ -284,7 +294,13 @@ export class LoginFormComponent extends TranslatableComponent implements OnInit 
   @Input() showMagicLink?: boolean;
   @Input() magicLinkHref = '/auth/magic-link';
   @Input() showPasskeys?: boolean;
-  @Input() passkeySetupHref = '/auth/setup-passkey';
+  /**
+   * Where "no passkey on this device" sends the person. Unset (the default),
+   * the form asks for their email in place and mails a setup link, like
+   * bridge-svelte — `bridgeAuthRoutes()` serves `setup-passkey/:token` only, so
+   * there is no bare setup page to send them to (TBP-744).
+   */
+  @Input() passkeySetupHref?: string;
   /** Heading text. Defaults to empty — most hosts write their own page title. */
   @Input() heading: string | null = '';
   @Input() ssoConnections: FederationConnection[] = [];
@@ -318,7 +334,7 @@ export class LoginFormComponent extends TranslatableComponent implements OnInit 
   protected readonly showPassword = signal(false);
 
   // Inline forgot-password step machine — mirrors svelte/react.
-  protected readonly step = signal<'credentials' | 'forgot-password'>('credentials');
+  protected readonly step = signal<'credentials' | 'forgot-password' | 'passkey-request'>('credentials');
   protected readonly fpEmailSent = signal(false);
   protected readonly fpLoading = signal(false);
 
@@ -415,6 +431,16 @@ export class LoginFormComponent extends TranslatableComponent implements OnInit 
 
   openForgot(): void {
     this.step.set('forgot-password');
+    this.errorMsg.set(null);
+  }
+
+  /** No passkey on this device (TBP-744): an explicit `passkeySetupHref` wins. */
+  openPasskeyRequest(): void {
+    if (this.passkeySetupHref && typeof window !== 'undefined') {
+      window.location.href = this.passkeySetupHref;
+      return;
+    }
+    this.step.set('passkey-request');
     this.errorMsg.set(null);
   }
 

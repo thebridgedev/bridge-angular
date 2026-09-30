@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the published package is the built library (TBP-744)
+
+- Every published `@nebulr-group/bridge-angular` so far (0.7.4 included) was the source folder, not the ng-packagr build: no `fesm2022/`, no typings, no `.` export, so an app could not import it. The publish step now publishes `bridge-angular/dist`, a `prepublishOnly` guard refuses to publish the source folder, and CI packs the exact folder the release publishes and fails unless its `package.json` points at built entry points that are in the tarball (`scripts/check-pack.mjs`).
+
+### Fixed — passkeys run the browser ceremony (TBP-744, TBP-515)
+
+- `<bridge-passkey-login>` fetches the options from Bridge, asks the browser's authenticator and sends its answer back; it called `authenticateWithPasskey()` with no answer, so no authenticator was ever asked. It renders nothing where the browser has no WebAuthn, and takes an `autofill` input.
+- `<bridge-passkey-setup>` registers a passkey from the emailed link (registration options for the token, a new credential, verification); it called a `registerPasskeyWithToken()` auth-core does not have, so every setup link ended in "Passkey setup failed." It now says when a link expired (with an `(expired)` output — the built-in page sends the person back to sign-in), was cancelled, or the browser cannot do passkeys.
+- `<bridge-passkey-request-setup-link>` calls auth-core's `requestPasskeySetupLink`; `sendPasskeySetupLink` never existed.
+- No passkey on this device: `<bridge-login-form>` asks for the email in place and mails a setup link, like bridge-svelte. It used to send the person to `/auth/setup-passkey`, which `bridgeAuthRoutes()` does not serve. `passkeySetupHref` no longer has a default; set it to keep a page of your own.
+- `@simplewebauthn/browser` is now a dependency (loaded on first use).
+
 ### Added — the ten-line integration (TBP-744)
 
 - `bridgeAuthRoutes(options?)` — a lazy `Routes` array (`loadComponent`) the app spreads into its router: login, signup, the OAuth callback, set password, forgot password, magic link, passkey setup and workspace selection under `/auth`. The pages are public by construction (`data.bridgePublic`, honoured by `bridgeAuthGuard`); an unknown address falls through to the app's own `**`. Customisation rungs: `--bridge-*` tokens; `frame` (a layout component) and `heading(page)`; `overrides: { login: { component } }` or an app route placed before the spread to replace one page. The OAuth callback page also confirms a returning Stripe checkout.

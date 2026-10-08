@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://thebridge.dev/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular"><img src="https://raw.githubusercontent.com/thebridgedev/bridge-angular/main/.github/assets/banner.png" alt="The Bridge for Angular" width="100%"></a>
+  <a href="https://thebridge.dev/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular"><img src="https://raw.githubusercontent.com/thebridgedev/bridge-angular/main/.github/assets/banner.png" alt="The Bridge for Angular" width="100%"></a>
 </p>
 
 <p align="center">
@@ -8,17 +8,17 @@
 </p>
 
 <p align="center">
-  <a href="https://thebridge.dev/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular"><b>Website</b></a> ·
-  <a href="https://thebridge.dev/docs/quickstart/angular/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular"><b>Quickstart</b></a> ·
-  <a href="https://thebridge.dev/docs/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular"><b>Docs</b></a> ·
-  <a href="https://thebridge.dev/docs/ai-assistants/mcp/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular"><b>Set up with your AI assistant</b></a>
+  <a href="https://thebridge.dev/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular"><b>Website</b></a> ·
+  <a href="https://thebridge.dev/docs/quickstart/angular/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular"><b>Quickstart</b></a> ·
+  <a href="https://thebridge.dev/docs/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular"><b>Docs</b></a> ·
+  <a href="https://thebridge.dev/docs/ai-assistants/mcp/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular"><b>Set up with your AI assistant</b></a>
 </p>
 
 # The Bridge for Angular
 
 `@nebulr-group/bridge-angular` adds sign-in, workspaces and roles, feature flags, Stripe subscriptions and plan limits to an Angular 19 app, with providers, route helpers and one stylesheet.
 
-**[The Bridge](https://thebridge.dev/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular)** is a hosted backend for SaaS apps. It gives you sign-in (passwords, magic links, passkeys, social login and SSO), multi-tenant workspaces with roles, Stripe subscriptions with plan limits, and feature flags, all managed from one dashboard. Your AI coding assistant can set it up for you through the [Bridge MCP server](https://thebridge.dev/docs/ai-assistants/mcp/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular).
+**[The Bridge](https://thebridge.dev/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular)** is a hosted backend for SaaS apps. It gives you sign-in (passwords, magic links, passkeys, social login and SSO), multi-tenant workspaces with roles, Stripe subscriptions with plan limits, and feature flags, all managed from one dashboard. Your AI coding assistant can set it up for you through the [Bridge MCP server](https://thebridge.dev/docs/ai-assistants/mcp/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular).
 
 ## Install
 
@@ -78,15 +78,44 @@ Configuration is code (Angular has no env-var convention): each option resolves 
 
 Plan limits, lowest level first: level 0 needs nothing (the upgrade dialog opens on a `402` from your backend); level 1 is `<bridge-quota-gate metric="…">` / `[bridgeQuotaGate]` and `<bridge-feature-flag key="…" [upgrade]="true">`; level 2 is `injectQuota(metric)` / `injectEntitlements()`.
 
+## Working on this repository
+
+The library lives in `bridge-angular/`, a demo app in `demo/` and the guides in [`learning/`](learning/README.md).
+
+### Build
+
+```bash
+npm run build
+```
+
+Artifacts are emitted to `dist/` via `ng-packagr`.
+
+### Release (branch-protected main)
+
+```bash
+# 1) Create release branch
+git checkout -b release/v0.1.0
+git push -u origin release/v0.1.0
+
+# 2) Open a PR: release/v0.1.0 -> main, approve and merge
+
+# 3) After merge to main, tag and push
+git checkout main && git pull
+git tag v0.1.0
+git push origin v0.1.0
+
+# 4) Monitor GitHub Actions "Publish to npm"
+```
+
 ## Learn more
 
-- [Quickstart](https://thebridge.dev/docs/quickstart/angular/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular)
-- [Authentication](https://thebridge.dev/docs/auth/angular/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular)
-- [Sign-in inside your app](https://thebridge.dev/docs/sdk-auth/angular/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular)
-- [Feature flags](https://thebridge.dev/docs/feature-flags/angular/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular)
-- [Branding](https://thebridge.dev/docs/branding/angular/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular)
-- [Live updates](https://thebridge.dev/docs/live-updates/angular/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular)
-- [Subscriptions and plan limits](https://thebridge.dev/docs/billing/how-it-works/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular)
+- [Quickstart](https://thebridge.dev/docs/quickstart/angular/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular)
+- [Authentication](https://thebridge.dev/docs/auth/angular/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular)
+- [Sign-in inside your app](https://thebridge.dev/docs/sdk-auth/angular/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular)
+- [Feature flags](https://thebridge.dev/docs/feature-flags/angular/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular)
+- [Branding](https://thebridge.dev/docs/branding/angular/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular)
+- [Live updates](https://thebridge.dev/docs/live-updates/angular/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular)
+- [Subscriptions and plan limits](https://thebridge.dev/docs/billing/how-it-works/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular)
 
 ## Other Bridge packages
 
@@ -102,4 +131,4 @@ Plan limits, lowest level first: level 0 needs nothing (the upgrade dialog opens
 
 ## License
 
-[MIT](https://github.com/thebridgedev/bridge-angular/blob/main/LICENSE) © Nebulr. Built by [The Bridge](https://thebridge.dev/?utm_source=npm&utm_medium=readme&utm_campaign=bridge-angular).
+[MIT](https://github.com/thebridgedev/bridge-angular/blob/main/LICENSE) © Nebulr. Built by [The Bridge](https://thebridge.dev/?utm_source=github&utm_medium=readme&utm_campaign=bridge-angular).

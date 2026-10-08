@@ -1,7 +1,7 @@
 {
   "name": "@nebulr-group/bridge-angular",
   "version": "0.8.0",
-  "description": "Bridge Angular library. Adds Bridge authentication, feature flags, and payments to your Angular application.",
+  "description": "The Bridge for Angular: sign-in, workspaces and roles, feature flags, Stripe subscriptions and plan limits with providers and route helpers.",
   "author": "Iman Pouya",
   "license": "MIT",
   "repository": {
@@ -11,7 +11,7 @@
   "bugs": {
     "url": "https://github.com/thebridgedev/bridge-angular/issues"
   },
-  "homepage": "https://thebridge.dev",
+  "homepage": "https://thebridge.dev/docs/quickstart/angular/",
   "scripts": {
     "build": "ng-packagr -p ng-package.json",
     "package": "npm run build && cd dist && npm pack --pack-destination ../",
@@ -52,11 +52,23 @@
   },
   "keywords": [
     "angular",
+    "angular-library",
+    "route-guard",
+    "passkeys",
+    "magic-link",
+    "the-bridge",
     "bridge",
-    "nebulr",
+    "authentication",
     "auth",
+    "login",
+    "sso",
     "feature-flags",
-    "payments",
+    "stripe",
+    "subscriptions",
+    "billing",
+    "plan-limits",
+    "multi-tenant",
+    "rbac",
     "saas"
   ]
 }

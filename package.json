@@ -6,6 +6,7 @@
     "demo"
   ],
   "scripts": {
+    "check:docs-links": "node scripts/check-docs-links.mjs",
     "build": "npm run --workspace=demo build",
     "build:bridge": "npm run --workspace=@nebulr-group/bridge-angular build",
     "dev": "npm run --workspace=demo start",

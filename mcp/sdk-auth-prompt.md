@@ -1,19 +1,6 @@
 # Bridge Angular — Authentication
 
-You are wiring authentication into an Angular application that uses The Bridge.
-
-## Decide first — hosted or in-app?
-
-| You want | Mode | What you build | Config |
-|---|---|---|---|
-| Login inside your app, matching its design | **SDK auth** (default) — this guide | Nothing — `...bridgeAuthRoutes()` serves the pages | Set `loginRoute: '/auth/login'` |
-| Bridge owns the login UI | **Hosted** — only when the developer explicitly asks for it | Nothing — no login page | No `loginRoute` |
-
-**One config field is the whole switch.** Adding `loginRoute` to `BridgeConfig` turns hosted mode off. If you are being redirected to a route you never built, that is why.
-
-Do not ask the developer to choose: this guide is the approach unless they asked for hosted. Tell them in one line that sign-in will be in-app, styled to match their app.
-
-The rest of this guide covers **SDK auth**.
+You are wiring authentication into an Angular application that uses The Bridge. Sign-in happens inside the app: the login, signup and password pages render in the app's own layout, and users never leave it. `...bridgeAuthRoutes()` serves every one of those pages; you write no login, signup, callback or set-password page.
 
 ## The components — reach for these, do not hand-roll
 
@@ -28,7 +15,6 @@ The rest of this guide covers **SDK auth**.
 | MFA challenge / setup | `<bridge-mfa-challenge>`, `<bridge-mfa-setup>` |
 | Workspace ("tenant") selection | `<bridge-workspace-selector>`, `<bridge-tenant-selector>` |
 | SSO button | `<bridge-sso-button>` |
-| Hosted-login entry point | `<bridge-login>` |
 
 > **`<bridge-login-form>` is not just an email and password box.** It drives forgot-password, magic link, passkeys, MFA and workspace selection as inline steps, and it decides which methods to show from the app's own configuration — which the client cannot see. Rebuilding any of it means reimplementing a flow that exists and then keeping it in sync with settings you have no visibility of.
 >
@@ -52,6 +38,8 @@ const bridgeConfig: BridgeConfig = {
   apiBaseUrl: environment.bridgeApiBaseUrl || undefined,
 };
 ```
+
+(If the developer explicitly asks for Bridge's hosted sign-in page, or the app already uses it, respect that: leave out `loginRoute`, sign in with `AuthService.login()` instead of a link to `/auth/login`, and log out with `AuthService.logout()`; a local or self-hosted Bridge also sets `hostedUrl`. Everything else stays the same.)
 
 ## Step 2 — Spread the auth routes
 
@@ -102,7 +90,7 @@ Use the declarative `RouteGuardConfig` + `bridgeAuthGuard` from `integration-pro
 
 ## Reading the user
 
-Inject `AuthService` for auth state and `ProfileService` for profile fields. For the raw token — to call your own backend — take it from the auth service, send it as `Authorization: Bearer <token>`, and verify it server-side with `@nebulr-group/bridge-nestjs` or `@nebulr-group/bridge-express`.
+Inject `AuthService` for auth state and `ProfileService` for profile fields. To log out, call `getBridgeAuth().logout({ redirectTo: '/auth/login' })` on `AuthService` so the user lands on the app's own login page. For the raw token — to call your own backend — take it from the auth service, send it as `Authorization: Bearer <token>`, and verify it server-side with `@nebulr-group/bridge-nestjs` or `@nebulr-group/bridge-express`.
 
 > **Never make an authorization decision on the client alone.** Hiding a control is UX. The check that matters happens on the server against the verified token.
 
@@ -110,7 +98,8 @@ Inject `AuthService` for auth state and `ProfileService` for profile fields. For
 
 - **Hand-rolling a password form** instead of `<bridge-login-form>` — loses magic link, passkeys, MFA and workspace selection, all configured server-side.
 - **Writing login/signup/callback pages by hand** — `bridgeAuthRoutes()` already serves them; a hand-written set usually forgets `set-password/:token`, which every signup email links to.
-- **Setting `loginRoute` while expecting hosted login**, or the reverse.
+- **Leaving out `loginRoute`.** The guard then sends signed-out visitors off the app instead of to `/auth/login`.
+- **Logging out without `redirectTo`.** The user then leaves the app instead of landing on `/auth/login`.
 - **Trusting auth state for authorization.** It says a session exists, not what it may do.
 - **Expecting an NgModule.** These are standalone components; import them into `imports: []`.
 

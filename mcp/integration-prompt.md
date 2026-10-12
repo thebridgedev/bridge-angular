@@ -8,12 +8,12 @@ This decision shapes everything else. Make it before writing code; getting it wr
 
 | You want | Use | What you build |
 |---|---|---|
-| The fastest path; Bridge owns the login UI | **Hosted auth** (default) | Nothing — no login page |
-| Login inside your app | **SDK auth** | Nothing either — `...bridgeAuthRoutes()` serves every sign-in page |
+| Login inside your app, matching its design | **SDK auth** (default) — `sdk-auth-prompt.md` | Nothing — `...bridgeAuthRoutes()` serves every sign-in page |
+| Bridge owns the login UI | **Hosted auth** — only when the developer explicitly asks for it | Nothing — no login page |
 
-**Setting `loginRoute` in `BridgeConfig` is the entire switch.** Without it you get hosted; with it you get in-app. If you are being redirected to a route you never built, that field is why.
+**Setting `loginRoute` in `BridgeConfig` is the entire switch.** With it you get in-app; without it, hosted. If you are being redirected to a route you never built, that field is why.
 
-If the user has not said which they want, ask.
+Do not ask the developer to choose: use SDK auth unless they explicitly asked for hosted sign-in, or the app is already on hosted sign-in and they have not asked to change it. Say which in one line, and follow `sdk-auth-prompt.md` (`get_integration_guide` topic `auth`, or `bridge guide angular sdk-auth`) for the auth pages and their styling.
 
 ## Prerequisites
 

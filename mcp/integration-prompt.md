@@ -16,6 +16,14 @@ Sign-in happens inside the app: the login, signup and password pages render in t
 npm i @nebulr-group/bridge-angular
 ```
 
+Then load the SDK's stylesheet from the app's global stylesheet. Put this line at the top of `src/styles.css`:
+
+```css
+@import '@nebulr-group/bridge-angular/styles.css';
+```
+
+Import it there, **not** as a `styles` entry in `angular.json`: a running `ng serve` reads `angular.json` only when it starts, so a new entry there leaves the sign-in pages unstyled until the dev server is restarted. An edit to `src/styles.css` reloads like any other change.
+
 **One entry point.** There is no `/flags` or `/billing` subpath and no separate provider per capability — everything imports from `@nebulr-group/bridge-angular`. If you find yourself reaching for a subpath, it does not exist.
 
 ## Step 2 — Provide Bridge

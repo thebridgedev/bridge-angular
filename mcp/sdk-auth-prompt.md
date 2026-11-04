@@ -25,6 +25,13 @@ You are wiring authentication into an Angular application that uses The Bridge. 
 1. `@nebulr-group/bridge-angular` installed.
 2. `provideBridge(bridgeConfig)` in `appConfig.providers` (see `integration-prompt.md`).
 3. `appId` set and non-empty.
+4. The SDK stylesheet imported at the top of `src/styles.css`. Without it the sign-in pages render unstyled:
+
+   ```css
+   @import '@nebulr-group/bridge-angular/styles.css';
+   ```
+
+   Import it there, **not** as a `styles` entry in `angular.json`: a running `ng serve` reads `angular.json` only when it starts, so a new entry there leaves the sign-in pages unstyled until the dev server is restarted. An edit to `src/styles.css` reloads like any other change.
 
 ## Step 1 — Point the config at your login route
 
@@ -78,7 +85,20 @@ The sign-in pages render inside the app, so they must look like the rest of it. 
    ```
 
    The names on the right are examples: use the variables the app actually defines, or its literal values when it has none. Map its error and success colours to the `--bridge-alert-*` tokens. The components inherit the page font; set nothing for it unless the app puts its font on something other than `body`. The full token list: `bridge guide mechanisms`.
-3. **Give the pages the app's frame** when the app's own pages sit in a card, a panel or a split layout: pass `bridgeAuthRoutes({ frame: AuthLayoutComponent })` with a component that wraps `<ng-content>` in the app's own card or shell, built from the app's own classes or components, so sign-in is not the one page that looks different.
+3. **Give the pages the app's frame** when the app's own pages sit in a card, a panel or a split layout: pass `bridgeAuthRoutes({ frame: AuthLayoutComponent })`, built from the app's own classes or components, so sign-in is not the one page that looks different. The frame is a layout route, not a wrapper: `bridgeAuthRoutes()` makes it the parent of every sign-in page, so it must contain its own `<router-outlet>` and import `RouterOutlet`. The page renders in that outlet. `<ng-content>` receives nothing there, so a frame built on it shows up empty.
+
+   ```ts
+   import { Component } from '@angular/core';
+   import { RouterOutlet } from '@angular/router';
+
+   @Component({
+     selector: 'app-auth-layout',
+     imports: [RouterOutlet],
+     // the app's own card or shell around the outlet
+     template: `<main class="auth-card"><router-outlet /></main>`,
+   })
+   export class AuthLayoutComponent {}
+   ```
 
 Ask the developer for colours only when the project has no styles of its own.
 
@@ -96,6 +116,8 @@ Inject `AuthService` for auth state and `ProfileService` for profile fields. To 
 
 ## Common mistakes
 
+- **Adding the SDK stylesheet to `angular.json`** instead of `@import`ing it at the top of `src/styles.css` — the running dev server does not pick it up, so the sign-in page stays unstyled until a restart.
+- **Putting `<ng-content>` in the `frame` component** instead of `<router-outlet />` — the frame is the pages' parent route, so the sign-in page renders in its outlet; with `<ng-content>` the frame is empty.
 - **Hand-rolling a password form** instead of `<bridge-login-form>` — loses magic link, passkeys, MFA and workspace selection, all configured server-side.
 - **Writing login/signup/callback pages by hand** — `bridgeAuthRoutes()` already serves them; a hand-written set usually forgets `set-password/:token`, which every signup email links to.
 - **Leaving out `loginRoute`.** The guard then sends signed-out visitors off the app instead of to `/auth/login`.

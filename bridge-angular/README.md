@@ -70,11 +70,13 @@ export const routes: Routes = [
 ];
 ```
 
-### styles.css
+### src/styles.css
 
 ```css
 @import '@nebulr-group/bridge-angular/styles.css';
 ```
+
+At the top of the global stylesheet, not under `styles` in `angular.json`: `ng serve` reads `angular.json` only when it starts.
 
 Configuration is code (Angular has no env-var convention): each option resolves as *explicit option > default*, an empty string is unset, a missing `appId` throws naming it, and `hostedUrl` follows `apiBaseUrl` on Bridge's domains.
 

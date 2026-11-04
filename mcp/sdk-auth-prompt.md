@@ -25,15 +25,20 @@ You are wiring authentication into an Angular application that uses The Bridge. 
 1. `@nebulr-group/bridge-angular` installed.
 2. `provideBridge(bridgeConfig)` in `appConfig.providers` (see `integration-prompt.md`).
 3. `appId` set and non-empty.
-4. The SDK stylesheet imported at the top of `src/styles.css`. Without it the sign-in pages render unstyled:
 
-   ```css
-   @import '@nebulr-group/bridge-angular/styles.css';
-   ```
+## Step 1 — Load the SDK stylesheet first
 
-   Import it there, **not** as a `styles` entry in `angular.json`: a running `ng serve` reads `angular.json` only when it starts, so a new entry there leaves the sign-in pages unstyled until the dev server is restarted. An edit to `src/styles.css` reloads like any other change.
+Before you touch `app.config.ts` or `app.routes.ts`, add the SDK stylesheet at the top of `src/styles.css`, as an edit on its own:
 
-## Step 1 — Point the config at your login route
+```css
+@import '@nebulr-group/bridge-angular/styles.css';
+```
+
+Do it first. While you work, the developer's browser reloads on every saved edit, and as soon as the config and routes below exist it lands on `/auth/login`. If the stylesheet is not in by then, they watch the sign-in page render unstyled until it is. The `--bridge-*` tokens from "Match the app's design" below can go into `src/styles.css` in the same edit, so the page appears in the app's look from its first render.
+
+Import it there, **not** as a `styles` entry in `angular.json`: a running `ng serve` reads `angular.json` only when it starts, so a new entry there leaves the sign-in pages unstyled until the dev server is restarted. An edit to `src/styles.css` reloads like any other change.
+
+## Step 2 — Point the config at your login route
 
 ```ts
 const bridgeConfig: BridgeConfig = {
@@ -48,7 +53,7 @@ const bridgeConfig: BridgeConfig = {
 
 (If the developer explicitly asks for Bridge's hosted sign-in page, or the app already uses it, respect that: leave out `loginRoute`, sign in with `AuthService.login()` instead of a link to `/auth/login`, and log out with `AuthService.logout()`; a local or self-hosted Bridge also sets `hostedUrl`. Everything else stays the same.)
 
-## Step 2 — Spread the auth routes
+## Step 3 — Spread the auth routes
 
 ```ts
 // src/app/app.routes.ts
@@ -104,7 +109,7 @@ Ask the developer for colours only when the project has no styles of its own.
 
 Customise further only as far as needed: `--bridge-*` CSS tokens (above); `bridgeAuthRoutes({ frame: AuthLayoutComponent, heading: (page) => … })`; replace one page with `overrides: { login: { component: MyLoginComponent } }` (a page you own renders `<bridge-login-form (login)="…">` and navigates itself).
 
-## Step 3 — Guard the rest
+## Step 4 — Guard the rest
 
 Use the declarative `RouteGuardConfig` + `bridgeAuthGuard` from `integration-prompt.md` rather than checking auth inside each component. Rules run before the component renders; a component-level check renders, fetches, and only then hides.
 
@@ -117,6 +122,7 @@ Inject `AuthService` for auth state and `ProfileService` for profile fields. To 
 ## Common mistakes
 
 - **Adding the SDK stylesheet to `angular.json`** instead of `@import`ing it at the top of `src/styles.css` — the running dev server does not pick it up, so the sign-in page stays unstyled until a restart.
+- **Adding the routes or `loginRoute` before the stylesheet** — the reloading browser lands on `/auth/login` and shows the sign-in page unstyled until the `@import` arrives. Stylesheet first, then config, then routes.
 - **Putting `<ng-content>` in the `frame` component** instead of `<router-outlet />` — the frame is the pages' parent route, so the sign-in page renders in its outlet; with `<ng-content>` the frame is empty.
 - **Hand-rolling a password form** instead of `<bridge-login-form>` — loses magic link, passkeys, MFA and workspace selection, all configured server-side.
 - **Writing login/signup/callback pages by hand** — `bridgeAuthRoutes()` already serves them; a hand-written set usually forgets `set-password/:token`, which every signup email links to.

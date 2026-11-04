@@ -90,6 +90,11 @@ export type BridgeBillingRoutesOptions = CommonRouteOptions<BridgeBillingPage>;
 /** What a Bridge page component reads from its route. */
 export interface BridgePageOptions {
   heading?: (page: string) => string | null;
+  /**
+   * TBP-899 — the pages render inside the app's `frame`, so they leave out
+   * their own padded page container (as bridge-svelte and bridge-react do).
+   */
+  framed?: boolean;
   redirectTo: string;
   messages?: MessageOverrides;
 }
@@ -127,6 +132,7 @@ export function bridgeAuthRoutes(options: BridgeAuthRoutesOptions = {}): Routes 
     heading: options.heading as BridgePageOptions['heading'],
     redirectTo: options.redirectTo ?? '/',
     messages: options.messages,
+    framed: !!options.frame,
   };
   const children: Routes = BRIDGE_AUTH_PAGES.map((page): Route => {
     const override = options.overrides?.[page];

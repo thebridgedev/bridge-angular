@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1] - 2026-11-04
+
+### Fixed
+
+- **A finished-looking sign-in page.** The show-password toggle on the sign-in and set-password pages is an eye icon instead of an emoji. "Sign in with Passkeys" and "Sign in with Magic Link" carry icons like the other sign-in buttons, and "Sign in with Magic Link" is a button, centred and no longer underlined. The sign-in pages now look the same as in the other Bridge packages.
+- **Sign-in links match your app.** "Sign up", "Log in" and the other text links on the sign-in pages take the form's text colour and font, instead of the browser's default blue.
+- **Sign-in pages fill your frame.** With `bridgeAuthRoutes({ frame })`, the sign-in pages fill the frame's width and add no padding of their own; before, the form shrank to a narrow column. The login page also no longer adds a "Log in to your account" heading of its own, matching the other packages; set one with `heading`.
+
 ## [0.8.0] - 2026-09-30
 
 ### Added

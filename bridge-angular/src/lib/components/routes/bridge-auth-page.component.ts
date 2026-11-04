@@ -53,7 +53,9 @@ export function bridgeAuthBase(segments: readonly string[], hasToken: boolean): 
     WorkspaceSelectorComponent,
   ],
   template: `
-    <div class="bridge-auth-page" [attr.data-bridge-auth-route]="page">
+    <!-- TBP-899: inside the app's frame the page draws no container of its own,
+         as in bridge-svelte and bridge-react. -->
+    <div [class.bridge-auth-page]="!options.framed" [attr.data-bridge-auth-route]="page">
       @if (page === 'oauth-callback') {
         <!-- Exchanges the code / confirms the checkout, then navigates away. -->
       } @else if (hosted && !(page === 'workspaces' && auth.isAuthenticated())) {
@@ -69,8 +71,9 @@ export function bridgeAuthBase(segments: readonly string[], hasToken: boolean): 
           }
         </bridge-auth-form-wrapper>
       } @else if (page === 'login') {
+        <!-- No default heading on the login page (TBP-899), as in the other SDKs. -->
         <bridge-login-form
-          [heading]="headingFor(page) ?? t('login.heading')"
+          [heading]="headingFor(page) ?? ''"
           [signupHref]="base + '/signup'"
           [forgotPasswordHref]="base + '/forgot-password'"
           [magicLinkHref]="base + '/magic-link'"

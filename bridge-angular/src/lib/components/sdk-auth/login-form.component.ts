@@ -179,7 +179,12 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
                 tabindex="-1"
                 [attr.aria-label]="showPassword() ? t('action.hidePassword') : t('action.showPassword')"
               >
-                {{ showPassword() ? '🙈' : '👁' }}
+                <!-- TBP-899: the same eye icons as bridge-svelte, not an emoji. -->
+                @if (showPassword()) {
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                } @else {
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                }
               </button>
             </div>
           </div>
@@ -226,7 +231,22 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
               class="bridge-btn bridge-btn-secondary bridge-sso-btn"
               data-bridge-magic-link
             >
-              <span class="bridge-sso-btn-inner">{{ t('login.magicLink') }}</span>
+              <span class="bridge-sso-btn-inner">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                  <g transform="translate(0, 0) scale(0.3)">
+                    <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" fill="currentColor" stroke="none"/>
+                  </g>
+                  <g transform="translate(15, 17) scale(0.25)">
+                    <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" fill="currentColor" stroke="none"/>
+                  </g>
+                  <g transform="translate(19, 15) scale(0.14)">
+                    <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" fill="currentColor" stroke="none"/>
+                  </g>
+                </svg>
+                <span>{{ t('login.magicLink') }}</span>
+              </span>
             </a>
           </div>
         }
@@ -259,7 +279,7 @@ function buildSsoConnections(appConfig: AppConfig | null): FederationConnection[
 
         @if (effectiveShowSignupLink()) {
           <div class="bridge-form-footer">
-            {{ t('login.signupPrompt') }} <a [href]="signupHref">{{ t('login.signupLink') }}</a>
+            {{ t('login.signupPrompt') }} <a [href]="signupHref" class="bridge-link">{{ t('login.signupLink') }}</a>
           </div>
         }
       </bridge-auth-form-wrapper>

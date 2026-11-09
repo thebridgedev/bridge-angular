@@ -1,6 +1,6 @@
 # Bridge Angular — Billing
 
-You are wiring **billing UI** into an Angular (standalone-components, v19+) application that uses The Bridge. Plans and Stripe are already configured — this guide covers the frontend only: the subscription page, lifecycle notices, quota counters, and the paywall.
+You are wiring **billing UI** into an Angular (standalone-components, v19+) application that uses The Bridge. Plans and Stripe are already configured — this guide covers the frontend only: the subscription pages, lifecycle notices, quota counters, the paywall, and the billing portal.
 
 > **STOP — do not install any packages.** The only dependency is `@nebulr-group/bridge-angular`, which is already installed. Do NOT install `@stripe/stripe-js` — the SDK redirects to Stripe Checkout via a plain URL redirect, no Stripe client library needed.
 
@@ -8,12 +8,14 @@ You are wiring **billing UI** into an Angular (standalone-components, v19+) appl
 
 ## Decide first — which billing surface do you need?
 
-Billing is a set of drop-in components, not one page. Pick the ones the requirement actually calls for; each is standalone and imports from the main entry.
+Billing is not one component. Pick the rows that match what the app has to do; most apps need the first three. Every component is standalone and imports from the main entry.
 
 | You need | Use | What it does |
 |---|---|---|
-| Let a tenant pick or change a plan | `<bridge-plan-selector>` | Loads plans, applies a free plan directly, launches Stripe Checkout for paid ones |
-| Block the app until a plan is chosen | `<bridge-paywall>` around the routed content, **or** `billing.paywallRoute` in `provideBridge()` | Overlay vs. guard redirect — pick one, not both |
+| **The subscription page, the paywall and the checkout return pages** | `...bridgeBillingRoutes()` in `app.routes.ts` (Step 1) | Serves `/subscription` (current plan, "Manage billing", plan picker), `/subscription/plan` (paywall), `/subscription/success`, `/subscription/error` |
+| **The app unusable until the workspace has a plan** | Nothing more | With plans, `bridgeAuthGuard()` redirects a plan-less workspace to `/subscription/plan` |
+| Let users update their card, see invoices or cancel | `<bridge-billing-portal-button>` | Already on `/subscription`; place it anywhere else you want it (Step 5) |
+| Let a tenant pick or change a plan on a page of your own | `<bridge-plan-selector>` | Loads plans, applies a free plan directly, launches Stripe Checkout for paid ones |
 | Tell the user about a failed payment, ending trial or cancellation | `<bridge-billing-notice>` | Renders nothing while billing is healthy |
 | Show the current plan and status | `<bridge-subscription-status>` | Display only |
 | Warn as a metered limit fills up | `<bridge-quota-banner metric="…">` | Silent below 80% of the cap |
@@ -24,7 +26,7 @@ Billing is a set of drop-in components, not one page. Pick the ones the requirem
 
 **Entitlements are not feature flags.** An entitlement says what the tenant *bought* (this guide); a flag says what is *exposed* (`feature-flags-prompt.md`). Gating a paid capability on a flag leaves it switchable for people who never paid.
 
-> **There is no billing-portal component in this package.** `<bridge-plan-selector>` is the manage-plan surface. Its payment-failed state shows a "Manage billing" button that is deliberately unwired — the Stripe customer portal URL is not exposed by the SDK yet, so do not point users at a portal route expecting one.
+> **Never hardcode a billing-portal or Stripe URL.** `<bridge-billing-portal-button>` (and `getBridgeAuth().getBillingPortalUrl()` under it) mints a portal session for the signed-in workspace at click time; a pasted URL either expires or opens whichever workspace it was minted for.
 
 ## Prerequisites
 
@@ -47,29 +49,42 @@ bridge stripe status
   - `provideBridge(...)` registered in `appConfig.providers` (see the auth/flags guides)
   - `appId` set (read from `environment.ts`)
 
-## Step 1 — Subscription page
+## Step 1 — Mount the subscription pages
 
-Create `src/app/pages/subscription/subscription.component.ts`:
+**Do not write a subscription page, a success or cancel page, a `/billing` page or a `/payment-error` page.** One spread serves them all. Put it inside the guarded parent, next to your own routes (the auth guide already added `...bridgeAuthRoutes()`; the Stripe return comes back through its `/auth/oauth-callback`):
 
 ```ts
-import { Component } from '@angular/core';
-import { PlanSelectorComponent } from '@nebulr-group/bridge-angular';
+// src/app/app.routes.ts
+import { Routes } from '@angular/router';
+import { bridgeAuthGuard, bridgeAuthRoutes, bridgeBillingRoutes } from '@nebulr-group/bridge-angular';
 
-@Component({
-  selector: 'app-subscription',
-  standalone: true,
-  imports: [PlanSelectorComponent],
-  template: `
-    <h1>Choose a plan</h1>
-    <bridge-plan-selector />
-  `,
-})
-export class SubscriptionComponent {}
+export const routes: Routes = [
+  ...bridgeAuthRoutes(),
+  {
+    path: '',
+    canActivateChild: [bridgeAuthGuard()],
+    children: [
+      ...bridgeBillingRoutes(),   // /subscription, /subscription/plan, /subscription/success, /subscription/error
+      // …your routes
+    ],
+  },
+];
 ```
 
-`<bridge-plan-selector>` handles everything: loads plans, shows the current plan, routes free-plan selection directly (`selectFreePlan`), and launches Stripe Checkout for paid plans (`startCheckout` → redirect to the returned `checkoutUrl`). After payment or cancellation, Stripe returns through Bridge's unified `/auth/oauth-callback` handler, which syncs billing state and lands the user on your `successRedirect` / `cancelRedirect`. No redirect pages or URL configuration needed.
+That one spread is the whole subscription surface:
 
-**`<bridge-plan-selector>` inputs / outputs:**
+| Address | Page | Config default it serves |
+|---|---|---|
+| `/subscription` | Current plan, "Manage billing" (`<bridge-billing-portal-button>`), plan picker | `billing.manageRoute` |
+| `/subscription/plan` | The paywall | `billing.paywallRoute` |
+| `/subscription/success` | Where a checkout or a free pick lands | `<manageRoute>/success` |
+| `/subscription/error` | Where a failed checkout confirmation lands | `billing.paymentErrorRoute` |
+
+The plan picker loads plans cheapest first, shows interval tabs and each plan's features, selects a free plan directly, confirms before an instant switch, and launches Stripe Checkout for a paid plan. Stripe returns through Bridge's `/auth/oauth-callback`, which confirms the checkout and lands on `/subscription/success`.
+
+To customise, cheapest first: the `--bridge-*` CSS tokens; then `bridgeBillingRoutes({ frame, heading })` (`frame` is a layout component with a `<router-outlet>`, `heading(page)` returns each page's heading); then take one page over and keep the others, `bridgeBillingRoutes({ overrides: { plan: { component: MyPricing } } })`, building it from `<bridge-plan-selector>`. `path: 'billing'` moves the whole set; set `billing.manageRoute` / `paywallRoute` / `paymentErrorRoute` in `provideBridge()` to match.
+
+**`<bridge-plan-selector>` inputs / outputs** (for a page of your own; the pages above already use it):
 
 | Binding | Type | Default | Description |
 |---------|------|---------|-------------|
@@ -78,7 +93,7 @@ export class SubscriptionComponent {}
 | `className` / `style` | `string` (input) | `''` | Pass-through styling |
 | `(select)` | `EventEmitter<{ plan, price }>` (output) | — | Fires after free-plan selection or a plan change |
 
-**Paywall (post-signup):** to drop the user straight into the app after first payment, set `successRedirect="/"`. The subscription syncs automatically on whichever page they land on.
+On a page of your own, set `successRedirect="/"` to drop the user straight into the app after the first payment. The subscription syncs automatically on whichever page they land on.
 
 ## Step 2 — Billing notice banner
 
@@ -100,63 +115,39 @@ It reads `useBridge().subscription` (the Billing 2.0 lifecycle snapshot from aut
 
 The default CTA navigates to `billing.manageRoute` from the Bridge config, default `/subscription` — the page `...bridgeBillingRoutes()` serves.
 
-## Step 2b — Plan-selection paywall (default)
+## Step 2b — Plan-selection paywall (on by default)
 
-Set this up by default: a signed-in tenant with no plan can't use the app until they pick one. There are two ways — pick one.
+Nothing to write. When the app has plans, `bridgeAuthGuard()` sends a signed-in workspace with no plan to `/subscription/plan` (served by Step 1) before it reaches a guarded route, and lets it through once a plan is active. The redirect respects the app-level `paymentsAutoRedirect` flag (**`true` by default**):
 
-**Option A — `<bridge-paywall>` overlay.** Wrap your routed content:
-
-```ts
-import { PaywallComponent } from '@nebulr-group/bridge-angular';
-
-@Component({
-  selector: 'app-shell',
-  standalone: true,
-  imports: [PaywallComponent, RouterOutlet],
-  template: `
-    <bridge-paywall successRedirect="/">
-      <router-outlet />
-    </bridge-paywall>
-  `,
-})
-export class ShellComponent {}
+```bash
+bridge app update --payments-auto-redirect false   # turn the paywall off for the app
 ```
 
-`<bridge-paywall>` shows a fullscreen plan-selector modal when the session reports `shouldSelectPlan` (and `paymentsAutoRedirect` is not `false`), then projects `<ng-content>` once a plan is chosen. Inputs: `successRedirect` (default `/`), `cancelRedirect` (default `/`), `heading` (optional). Output: `(select)`.
+Variations, only when the developer asks for them:
 
-**Option B — paywall route via `provideBridge()`.** Configure `billing.paywallRoute` so the auth guard redirects planless users before they reach a protected route:
+- **An onboarding page of your own** (e.g. `/welcome`): a product decision — ask, never create it unasked. If yes, render `<bridge-paywall-page heading="…" />` on that route and set `billing: { paywallRoute: '/welcome' }` in the `provideBridge()` config.
+- **A modal instead of a redirect:** wrap the routed content in `<bridge-paywall>` (it shows a full-screen plan picker while the session reports `shouldSelectPlan`, then projects its content) and set `billing: { paywallRoute: false }`, so the guard does not redirect as well. Inputs: `successRedirect` (default `/`), `cancelRedirect` (default `/`), `heading`. Output: `(select)`.
 
 ```ts
-// src/app/app.config.ts
+// src/app/app.config.ts — only for one of the variations above
 const bridgeConfig: BridgeConfig = {
   appId: environment.bridgeAppId,
   // Defaults to production. Required for a stage / local / self-hosted app.
   apiBaseUrl: environment.bridgeApiBaseUrl || undefined,
   billing: {
-    paywallRoute: '/welcome',
-    paymentErrorRoute: '/subscription/error', // the default
-    // Default destination of the Upgrade/Manage CTA in <bridge-billing-notice>
-    // and <bridge-quota-banner>. Defaults to '/subscription'.
+    paywallRoute: '/welcome',               // or false with <bridge-paywall>; default '/subscription/plan'
+    // Where the Upgrade/Manage buttons in <bridge-billing-notice> and
+    // <bridge-quota-banner> go. Defaults to '/subscription'.
     manageRoute: '/subscription',
   },
 };
-
-export const appConfig: ApplicationConfig = {
-  providers: [provideRouter(routes), provideBridge(bridgeConfig)],
-};
-```
-
-Then render a `<bridge-plan-selector />` on the `/welcome` route. The redirect is gated by the app-level `paymentsAutoRedirect` flag (**`true` by default**). To turn the whole paywall off:
-
-```bash
-bridge app update --payments-auto-redirect false
 ```
 
 ## Step 3 — Quota and entitlement UI (optional)
 
 Skip if the plans have no per-resource limits or feature differences.
 
-> Quotas and entitlements were configured in the master prompt (or the Bridge admin → **Plans**) via `bridge plan quota set` and `bridge plan entitlement set`. This step only surfaces them.
+> Quotas and plan features were configured in the master prompt (or the Bridge admin → **Plans**) via `bridge plan quota set` and `bridge plan feature add`. This step only surfaces them. (There is no `bridge plan entitlement set` command: a plan feature is added with `bridge plan feature add`, and every `hard` quota is also an entitlement of the same name.)
 
 To show a live quota counter, drop in `<bridge-quota-banner metric="ai_completions" />` — it renders nothing below 80% of the cap, then a warning at 80–94% and a critical notice at ≥95%. It reads `useBridge().quota(metric)` (via `createQuotaSignal(metric)`) and ticks live as usage is reported, no polling. Inputs: `metric` (required), `label`, `onActionClick`, `actionHref` (Upgrade CTA destination; defaults to `billing.manageRoute` config → `/subscription`).
 
@@ -196,6 +187,32 @@ inject(AuthService).getBridgeAuth().usage.report('ai_completions', 1); // value 
 ```
 
 Reporting to a metric not configured in the admin is accepted server-side but ticks no counter. Exceeding the cap always succeeds — the reaction is downstream (`metered` bills overage, `hard` flips the entitlement off).
+
+## Step 5 — Billing portal
+
+The "Manage billing" button (update the card, see invoices, cancel) is already on `/subscription`, next to the current plan. Do not add a second one there. To put it anywhere else — a settings page, an account menu — render `<bridge-billing-portal-button>`:
+
+```ts
+import { Component } from '@angular/core';
+import { BillingPortalButtonComponent } from '@nebulr-group/bridge-angular';
+
+@Component({
+  selector: 'app-account-settings',
+  standalone: true,
+  imports: [BillingPortalButtonComponent],
+  template: `
+    <bridge-billing-portal-button />
+    <!-- or: <bridge-billing-portal-button label="Billing & invoices" className="my-button" /> -->
+  `,
+})
+export class AccountSettingsComponent {}
+```
+
+It renders only for someone who can act on it: the workspace owner (`canManageBilling()`), on an app with payments on, whose workspace already has a plan; for everyone else it renders nothing, so no `@if` around it. On click it fetches a one-time Stripe portal URL and follows it; while that runs the button is disabled, and if it fails the error shows above the button and it can be clicked again. Inputs: `label` (default `Manage billing`), `className`.
+
+For a fully custom button, the method is `inject(AuthService).getBridgeAuth().getBillingPortalUrl()` — there is no `getPortalUrl()`. It returns the one-time URL built from the `apiBaseUrl` you configured, so it follows your app to stage or local dev; do not hand-roll a `fetch` against a hardcoded `https://api.thebridge.dev`. The session is short-lived, so call it at click time rather than caching the result. Hide the button with `getBridgeAuth().canManageBilling()` rather than letting the call fail for a member.
+
+A payment problem does not need this button: `<bridge-billing-notice />` (Step 2) already sends the owner to `/subscription`, and the plan picker there shows its own "Manage billing" button when the last payment failed.
 
 ## Reading subscription state
 
@@ -239,22 +256,24 @@ Plans, prices, quotas, and entitlements are configured at **app.thebridge.dev** 
 Before verifying, confirm every item was applied:
 
 - [ ] `bridge plan list` returns at least one plan
-- [ ] Subscription component created with `<bridge-plan-selector />` (no inputs needed for the standard plan-change flow)
+- [ ] `...bridgeBillingRoutes()` spread inside the guarded parent in `app.routes.ts`, and `...bridgeAuthRoutes()` mounted (the Stripe return comes back through it)
+- [ ] No hand-written subscription, success, cancel, `/billing` or `/payment-error` page, and no hand-written portal call or hardcoded portal URL
 - [ ] `<bridge-billing-notice />` added to the root component
-- [ ] Paywall: `<bridge-paywall>` wrapping the routed content, OR `billing.paywallRoute` set in `provideBridge()`
+- [ ] Paywall: nothing added unless the developer asked for an onboarding page or a modal (then `billing.paywallRoute` set to match)
 - [ ] Quota/entitlement UI added if plans have limits
 - [ ] Every `createSubscriptionSignal`/`createQuotaSignal` is torn down in `ngOnDestroy`
 - [ ] No extra packages installed (`@stripe/stripe-js` must NOT be in package.json)
 
 ## Verify
 
-1. Navigate to the subscription page — plan cards render with correct prices; a tier with monthly + yearly pricing shows both intervals.
-2. Select a free plan — subscription updates immediately, no redirect.
+1. Open `/subscription` — plan cards render cheapest first; a tier with monthly + yearly pricing shows interval tabs.
+2. Select a free plan — the plan changes and you land on `/subscription/success`.
 3. Select a paid plan — Stripe Checkout launches.
-4. Complete payment — redirected back with the updated plan showing.
-5. Cancel payment — redirected to the cancel target.
-6. Paywall: sign in as a new tenant with no plan — the paywall blocks the app until a plan is chosen.
-7. Run the project's build command — no TypeScript or import errors.
+4. Complete payment — you land on `/subscription/success` with the new plan showing.
+5. Cancel payment — you are back on the page you picked from.
+6. Back on `/subscription` as the workspace owner with a paid plan: "Manage billing" shows next to the current plan and opens the Stripe customer portal. Signed in as a member, it is not shown.
+7. Paywall: sign in as a new workspace with no plan — you are sent to `/subscription/plan` before a guarded page renders.
+8. Run the project's build command — no TypeScript or import errors.
 
 ---
 

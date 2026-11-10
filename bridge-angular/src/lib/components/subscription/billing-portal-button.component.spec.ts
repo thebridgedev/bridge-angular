@@ -188,7 +188,8 @@ describe('the subscription page bridgeBillingRoutes() serves (TBP-937)', () => {
   it('shows "Manage billing" next to the current plan, with no app code', async () => {
     const harness = await RouterTestingHarness.create('/subscription');
     const el = harness.routeNativeElement as HTMLElement;
-    const button = el.querySelector('.bridge-billing-current [data-bridge-billing-portal]');
+    // TBP-944 — the current plan sits in its summary panel, with the button beside it.
+    const button = el.querySelector('[data-bridge-billing-summary] [data-bridge-billing-portal]');
     expect(button?.textContent?.trim()).toBe('Manage billing');
   });
 

@@ -374,6 +374,12 @@ test.describe('Welcome Paywall — first-time user flow', () => {
       await expect(page.locator('[data-bridge-plan-selector][data-state="active"]')).toBeVisible({
         timeout: LONG_TIMEOUT,
       });
+      // TBP-944 (svelte TBP-813) — the return lands on the subscription page,
+      // which says the checkout went through, once.
+      expect(new URL(page.url()).pathname).toBe('/subscription');
+      const notice = page.locator('[data-bridge-billing-route="manage"] [data-bridge-checkout-notice]');
+      await expect(notice).toBeVisible({ timeout: LONG_TIMEOUT });
+      await expect(notice).toHaveAttribute('data-kind', 'checkout');
 
       const postCheckoutUrl = page.url();
       const postCheckoutPath = new URL(postCheckoutUrl).pathname;

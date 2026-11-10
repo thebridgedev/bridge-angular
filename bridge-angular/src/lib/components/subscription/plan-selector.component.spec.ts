@@ -1,7 +1,9 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, type Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { Plan, PriceOfferSdk } from '@nebulr-group/bridge-auth-core';
+import { Router, provideRouter } from '@angular/router';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { checkoutResult, clearCheckoutResult } from '../../billing/checkout-result';
 import { AuthService, type SubscriptionState } from '../../shared/services/auth.service';
 import { PlanSelectorComponent } from './plan-selector.component';
 
@@ -159,10 +161,12 @@ describe('PlanSelectorComponent — S2 customisation parity (TBP-744 / TBP-515)'
     const el: HTMLElement = fixture.nativeElement;
     const tabs = [...el.querySelectorAll('.bridge-plan-interval-tab')] as HTMLButtonElement[];
     expect(tabs.map((t) => t.textContent?.trim())).toEqual(['Monthly', 'Yearly']);
-    expect(el.querySelectorAll('.bridge-plan-select-btn')[0].textContent).toContain('10 USD / month');
+    const firstPrice = () =>
+      [...(el.querySelector('[data-bridge-plan-price]')?.children ?? [])].map((n) => n.textContent?.trim()).join(' ');
+    expect(firstPrice()).toBe('$10 / month');
     tabs[1].click();
     fixture.detectChanges();
-    expect(el.querySelectorAll('.bridge-plan-select-btn')[0].textContent).toContain('100 USD / year');
+    expect(firstPrice()).toBe('$100 / year');
   });
 
   it('passes the selected interval to a custom plan card', () => {
@@ -204,7 +208,7 @@ describe('PlanSelectorComponent — plan-change confirmation (TBP-33 parity)', (
 
   function pickBig(fixture: { nativeElement: HTMLElement; detectChanges(): void }) {
     const buttons = [...fixture.nativeElement.querySelectorAll('.bridge-plan-select-btn')] as HTMLButtonElement[];
-    const big = buttons.find((b) => b.textContent?.includes('50 USD'))!;
+    const big = buttons.find((b) => b.textContent?.includes('Upgrade to Big'))!;
     big.click();
   }
 
@@ -225,7 +229,7 @@ describe('PlanSelectorComponent — plan-change confirmation (TBP-33 parity)', (
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
     const dialog = el.querySelector('[data-bridge-plan-confirm]');
-    expect(dialog?.textContent).toContain('Switch from Small to Big (50 USD / month)');
+    expect(dialog?.textContent?.replace(/\s+/g, ' ')).toContain('Switch from Small to Big ($50 / month)');
     expect(changePlan).not.toHaveBeenCalled();
 
     (el.querySelector('[data-bridge-plan-confirm-btn]') as HTMLButtonElement).click();
@@ -256,5 +260,157 @@ describe('PlanSelectorComponent — plan-change confirmation (TBP-33 parity)', (
     await fixture.whenStable();
     fixture.detectChanges();
     expect(el.querySelector('[data-bridge-plan-confirm]')?.textContent).toContain('Card declined');
+  });
+});
+
+/**
+ * TBP-944 (svelte TBP-813) — the default plan card: a formatted price block,
+ * "Choose / Upgrade to / Switch to" buttons, the current plan flagged, and an
+ * optional heading. A Free pick records the one-shot checkout result and lands
+ * on `successRedirect`. Same cases as bridge-svelte's plan-selector-card.test.ts.
+ */
+describe('PlanSelectorComponent — the default card (TBP-944)', () => {
+  const MONTHLY = (id: string, amount: number): PriceOfferSdk => ({ id, amount, currency: 'usd', recurrenceInterval: 'month' });
+  const FREE: Plan = { key: 'free', name: 'Free', prices: [MONTHLY('f', 0)] };
+  const PRO: Plan = { key: 'pro', name: 'Pro', prices: [MONTHLY('p', 29)] };
+  const TEAM: Plan = { key: 'team', name: 'Team', prices: [MONTHLY('t', 99)] };
+
+  let state: ReturnType<typeof signal<SubscriptionState>>;
+  let selectFreePlan: ReturnType<typeof vi.fn>;
+
+  class CatalogAuth extends StubAuthService {
+    override readonly subscription = state.asReadonly();
+    override getBridgeAuth(): unknown {
+      return { selectFreePlan };
+    }
+  }
+
+  @Component({
+    standalone: true,
+    imports: [PlanSelectorComponent],
+    template: `<bridge-plan-selector [heading]="heading" successRedirect="/landed" />`,
+  })
+  class CardHost {
+    heading: string | undefined = undefined;
+  }
+
+  @Component({
+    standalone: true,
+    imports: [PlanSelectorComponent],
+    template: `<bridge-plan-selector successRedirect="/landed" (select)="picked = $event.plan.key" />`,
+  })
+  class SelectHost {
+    picked: string | null = null;
+  }
+
+  function render(status: unknown, host: typeof CardHost | typeof SelectHost = CardHost, heading?: string) {
+    state.set({ status: status as SubscriptionState['status'], plans: [FREE, PRO, TEAM], loading: false, error: null });
+    const fixture = TestBed.createComponent<CardHost | SelectHost>(host as Type<CardHost | SelectHost>);
+    if (heading && fixture.componentInstance instanceof CardHost) fixture.componentInstance.heading = heading;
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  function card(fixture: { nativeElement: HTMLElement }, name: string): HTMLElement {
+    const cards = [...fixture.nativeElement.querySelectorAll<HTMLElement>('[data-bridge-plan-card]')];
+    const found = cards.find((c) => c.querySelector('.bridge-plan-name')?.textContent?.trim() === name);
+    if (!found) throw new Error(`no card for ${name}`);
+    return found;
+  }
+
+  const button = (c: HTMLElement) => c.querySelector<HTMLButtonElement>('.bridge-plan-select-btn')!;
+  const text = (n: Element | null | undefined) => n?.textContent?.replace(/\s+/g, ' ').trim();
+
+  beforeEach(() => {
+    clearCheckoutResult();
+    state = signal<SubscriptionState>({ status: null, plans: [], loading: false, error: null });
+    selectFreePlan = vi.fn(async () => {});
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [CardHost, SelectHost],
+      providers: [provideRouter([{ path: '**', children: [] }]), { provide: AuthService, useClass: CatalogAuth }],
+    });
+  });
+
+  it('with no current plan, every button is "Choose X" and no card is flagged', () => {
+    const fixture = render({ shouldSelectPlan: true });
+    expect(text(button(card(fixture, 'Free')))).toBe('Choose Free');
+    expect(text(button(card(fixture, 'Pro')))).toBe('Choose Pro');
+    expect(text(button(card(fixture, 'Team')))).toBe('Choose Team');
+    expect(card(fixture, 'Pro').getAttribute('data-pick')).toBe('choose');
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-bridge-plan-current-flag]')).toBeNull();
+    // The old labels are gone.
+    expect(el.textContent).not.toContain('Select free plan');
+    expect(el.textContent).not.toContain('Select plan');
+    expect(el.textContent).not.toContain('29 USD / month');
+  });
+
+  it('relative to the current plan: Current plan / Upgrade to / Switch to', () => {
+    const fixture = render({ plan: 'pro', paymentsEnabled: false });
+
+    const pro = card(fixture, 'Pro');
+    expect(text(button(pro))).toBe('Current plan');
+    expect(pro.getAttribute('data-current')).toBe('true');
+    expect(pro.getAttribute('data-pick')).toBe('current');
+    expect(text(pro.querySelector('[data-bridge-plan-current-flag]'))).toBe('Your plan');
+    expect(button(pro).disabled).toBe(true);
+
+    const team = card(fixture, 'Team');
+    expect(text(button(team))).toBe('Upgrade to Team');
+    expect(team.getAttribute('data-pick')).toBe('upgrade');
+    expect(button(team).classList).toContain('bridge-btn-primary');
+    expect(team.querySelector('[data-bridge-plan-current-flag]')).toBeNull();
+
+    const free = card(fixture, 'Free');
+    expect(text(button(free))).toBe('Switch to Free');
+    expect(free.getAttribute('data-pick')).toBe('switch');
+    expect(button(free).classList).toContain('bridge-btn-secondary');
+  });
+
+  it('reads a current plan given as an object, as the REST status returns it', () => {
+    const fixture = render({ plan: { key: 'team', name: 'Team' } });
+    expect(text(button(card(fixture, 'Team')))).toBe('Current plan');
+    expect(text(button(card(fixture, 'Pro')))).toBe('Switch to Pro');
+  });
+
+  it('each card shows its price as a formatted amount and interval, and check marks on features', () => {
+    const fixture = render({ shouldSelectPlan: true });
+    const price = card(fixture, 'Pro').querySelector('[data-bridge-plan-price]');
+    expect(text(price?.querySelector('.bridge-plan-price-amount'))).toBe('$29');
+    expect(text(price?.querySelector('.bridge-plan-price-interval'))).toBe('/ month');
+    expect(text(card(fixture, 'Free').querySelector('.bridge-plan-price-amount'))).toBe('$0');
+  });
+
+  it('a heading renders above the plans only when given', () => {
+    expect(render({ shouldSelectPlan: true }).nativeElement.querySelector('[data-bridge-plan-head]')).toBeNull();
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [CardHost],
+      providers: [provideRouter([{ path: '**', children: [] }]), { provide: AuthService, useClass: CatalogAuth }],
+    });
+    const fixture = render({ shouldSelectPlan: true }, CardHost, 'Change plan');
+    const heading = fixture.nativeElement.querySelector('[data-bridge-plan-head] h2.bridge-plan-heading');
+    expect(text(heading)).toBe('Change plan');
+  });
+
+  it('a Free pick records the result with the plan name and lands on successRedirect', async () => {
+    const router = TestBed.inject(Router);
+    const fixture = render({ plan: 'pro', paymentsEnabled: false });
+    button(card(fixture, 'Free')).click();
+    await fixture.whenStable();
+    expect(selectFreePlan).toHaveBeenCalledWith('free');
+    expect(checkoutResult()).toEqual({ kind: 'plan', planName: 'Free' });
+    expect(router.url).toBe('/landed');
+  });
+
+  it('a page that listens to (select) takes over: no banner result, no navigation', async () => {
+    const router = TestBed.inject(Router);
+    const fixture = render({ plan: 'pro', paymentsEnabled: false }, SelectHost);
+    button(card(fixture, 'Free')).click();
+    await fixture.whenStable();
+    expect((fixture.componentInstance as SelectHost).picked).toBe('free');
+    expect(checkoutResult()).toBeNull();
+    expect(router.url).toBe('/');
   });
 });

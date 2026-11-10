@@ -137,7 +137,7 @@ The same ladder holds for the sign-in pages (`bridgeAuthRoutes()`) and the subsc
 | Rung | What you do | What you own |
 |---|---|---|
 | **0 — nothing** | Bridge's pages render in your `<router-outlet>` | Your navigation, header and shell already surround them |
-| **1 — tokens** | Set `--bridge-*` CSS variables in your CSS | Colours, radius, spacing |
+| **1 — tokens** | Set `--bridge-*` CSS variables in your CSS, and plain CSS for anything else | Colours, radius, spacing, weights, shadows |
 | **2 — frame and heading** | `bridgeAuthRoutes({ frame: AuthLayoutComponent, heading: (page) => … })` | Everything around the form on every page (the frame is a layout component with its own `<router-outlet>`), and each page's heading |
 | **3 — take over one page** | `bridgeAuthRoutes({ overrides: { login: { component: MyLoginComponent } } })`, or your own route for that address placed before the spread | That one page; every other page keeps working |
 | **4 — headless** | Build your own UI on `AuthService.getBridgeAuth()` | Everything |
@@ -152,12 +152,12 @@ The same ladder holds for the sign-in pages (`bridgeAuthRoutes()`) and the subsc
 
 `heading` replaces only each page's main heading; return `null` to keep a page's default. A sign-in page you own navigates itself after sign-in: `(login)="router.navigateByUrl(readReturnTo(location.href) ?? '/')"`.
 
-**The token contract (rung 1).** The same `--bridge-*` variables as every Bridge plugin; the full table is in [theming](theming/theming.md). The plugin declares its defaults on `:where(:root)`, which has zero specificity, so your `:root` wins whichever stylesheet loads first. Leaving out the stylesheet makes the components headless: plain HTML for you to style.
+**The token contract (rung 1).** The same `--bridge-*` variables as every Bridge plugin; the full table is in [theming](theming/theming.md). Set only what your app does not already give: Bridge inherits your font and text colour, and every Bridge text size follows your `<body>` text size. Besides colours there are card, weight and shadow tokens (`--bridge-card-bg`, `--bridge-card-shadow`, `--bridge-font-weight-heading` / `-button` / `-label`, `--bridge-button-shadow`, and `--bridge-font-size` to make Bridge text differ from your body). All Bridge styles sit in a CSS cascade layer named `bridge`, so your `:root` wins whichever stylesheet loads first, and any plain CSS you write outside a layer overrides Bridge's classes and data attributes with no `!important`. Leaving out the stylesheet makes the components headless: plain HTML for you to style.
 
 ## 6. Pages Bridge serves, and the one it only offers
 
 - **Sign-in:** `bridgeAuthRoutes()` serves `/auth/login`, `/auth/signup`, `/auth/oauth-callback`, `/auth/set-password/:token` (where signup verification and password-reset emails land), `/auth/forgot-password`, `/auth/magic-link`, `/auth/setup-passkey/:token` and `/auth/workspaces`. They are public by construction (the guard honours their route data). Which methods appear comes from the app's settings at runtime. Hosted and in-app sign-in use the same routes; `loginRoute: '/auth/login'` is the whole switch to in-app.
-- **Subscription:** `bridgeBillingRoutes()` serves `/subscription`, the paywall `/subscription/plan`, and the checkout return pages `/subscription/success` and `/subscription/error`. These are the defaults of `billing.manageRoute`, `billing.paywallRoute` and `billing.paymentErrorRoute`, so Bridge's redirects and upgrade links point at pages that exist.
+- **Subscription:** `bridgeBillingRoutes()` serves `/subscription`, the paywall `/subscription/plan`, and the checkout return pages `/subscription/success` and `/subscription/error`. These are the defaults of `billing.manageRoute`, `billing.paywallRoute` and `billing.paymentErrorRoute`, so Bridge's redirects and upgrade links point at pages that exist. A completed checkout, or a Free plan pick, lands back on `/subscription` with a confirmation banner (`<bridge-checkout-notice>`); `billing.successRoute` moves it anywhere in the app.
 - **The paywall** redirects a signed-in workspace with no plan to `/subscription/plan` before a protected page renders — only when the app has plans and its `paymentsAutoRedirect` setting is on (the default). `billing: { paywallRoute: false }` turns it off.
 - **A `/welcome` onboarding page is offered, never created unasked.** Only if the developer wants one: a route rendering `<bridge-paywall-page />` and `billing: { paywallRoute: '/welcome' }` in `provideBridge()`.
 - Any other address falls through to the app's own `**` route.

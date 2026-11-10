@@ -147,16 +147,38 @@ describe('billing destinations (TBP-744, svelte TBP-702)', () => {
       paywallRoute: '/subscription/plan',
       paywallIsDefault: true,
       paymentErrorRoute: '/subscription/error',
-      successRoute: '/subscription/success',
+      // TBP-944 (svelte TBP-813) — a checkout lands on the subscription page, which shows the banner.
+      successRoute: '/subscription',
+      successIsDefault: true,
     });
   });
 
-  it('keeps what the app set, and false turns the paywall off', () => {
+  it('keeps what the app set, false turns the paywall off, and a checkout lands on manageRoute', () => {
     const paths = resolveBillingPaths({ manageRoute: '/billing/', paywallRoute: false, paymentErrorRoute: '/oops' });
     expect(paths.paywallRoute).toBeNull();
     expect(paths.paywallIsDefault).toBe(false);
     expect(paths.paymentErrorRoute).toBe('/oops');
-    expect(paths.successRoute).toBe('/billing/success');
+    expect(paths.successRoute).toBe('/billing/');
+    expect(paths.successIsDefault).toBe(true);
+  });
+
+  it('billing.successRoute sends a checkout anywhere in the app (TBP-944)', () => {
+    const paths = resolveBillingPaths({ successRoute: '/dashboard' });
+    expect(paths.successRoute).toBe('/dashboard');
+    expect(paths.successIsDefault).toBe(false);
+    expect(paths.manageRoute).toBe('/subscription');
+  });
+
+  it('the old confirmation page is still reachable as an explicit successRoute (TBP-944)', () => {
+    const paths = resolveBillingPaths({ successRoute: '/subscription/success' });
+    expect(paths.successRoute).toBe('/subscription/success');
+    expect(paths.successIsDefault).toBe(false);
+  });
+
+  it('an empty successRoute counts as unset (TBP-944)', () => {
+    const paths = resolveBillingPaths({ manageRoute: '/billing', successRoute: '' });
+    expect(paths.successRoute).toBe('/billing');
+    expect(paths.successIsDefault).toBe(true);
   });
 
   it('an app uses billing only when it has plans', () => {
@@ -179,6 +201,7 @@ describe('the OAuth callback page (TBP-744)', () => {
     handleCallback: vi.fn(async () => {}),
     confirmStripeCheckout: vi.fn(async () => {}),
     refreshBilling: vi.fn(async () => {}),
+    completeCheckout: vi.fn(() => {}),
     takeReturnTo: vi.fn(() => '/deep/link' as string | null),
   });
 
@@ -199,6 +222,38 @@ describe('the OAuth callback page (TBP-744)', () => {
     expect(await resolveCallbackTarget(params, paths, d)).toBe('/subscription/success');
     expect(d.confirmStripeCheckout).toHaveBeenCalledWith('cs_1');
     expect(d.refreshBilling).toHaveBeenCalled();
+  });
+
+  it('records the completed checkout after billing is re-read, for the landing page banner (TBP-944)', async () => {
+    const order: string[] = [];
+    const d = {
+      ...deps(),
+      refreshBilling: vi.fn(async () => {
+        order.push('refresh');
+      }),
+      completeCheckout: vi.fn(() => {
+        order.push('complete');
+      }),
+    };
+    const params = new URLSearchParams('stripe_success=1&session_id=cs_1&redirect=%2Fsubscription');
+    expect(await resolveCallbackTarget(params, paths, d)).toBe('/subscription');
+    expect(order).toEqual(['refresh', 'complete']);
+  });
+
+  it('records nothing when the confirmation fails, on a cancel, or on a sign-in (TBP-944)', async () => {
+    const failed = { ...deps(), confirmStripeCheckout: vi.fn(async () => {
+        throw new Error('no');
+      }) };
+    await resolveCallbackTarget(new URLSearchParams('stripe_success=1&session_id=cs_1'), paths, failed);
+    expect(failed.completeCheckout).not.toHaveBeenCalled();
+
+    const cancelled = deps();
+    await resolveCallbackTarget(new URLSearchParams('stripe_cancel=1&redirect=%2Fsubscription'), paths, cancelled);
+    expect(cancelled.completeCheckout).not.toHaveBeenCalled();
+
+    const signIn = deps();
+    await resolveCallbackTarget(new URLSearchParams('code=abc'), paths, signIn);
+    expect(signIn.completeCheckout).not.toHaveBeenCalled();
   });
 
   it('a checkout that cannot be confirmed lands on /subscription/error', async () => {

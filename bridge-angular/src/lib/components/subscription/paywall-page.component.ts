@@ -8,7 +8,8 @@
  *
  * `bridgeBillingRoutes()` already serves a paywall at `/subscription/plan`;
  * this is only for an app that wants its own. A completed checkout lands on
- * `<billing.manageRoute>/success`; a cancelled one comes back here.
+ * `billing.successRoute` (the subscription page, with a confirmation banner, by
+ * default); a cancelled one comes back here.
  */
 import { Component, Input, OnInit, inject, isDevMode } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
@@ -33,7 +34,7 @@ import { PlanSelectorComponent } from './plan-selector.component';
 export class BridgePaywallPageComponent implements OnInit {
   /** The page heading. */
   @Input() heading = 'Choose a plan';
-  /** Where a completed checkout lands. @default `<billing.manageRoute>/success` */
+  /** Where a completed checkout lands. @default `billing.successRoute`, else the subscription page */
   @Input() successRedirect?: string;
   /** Where a cancelled checkout lands. @default this page */
   @Input() cancelRedirect?: string;

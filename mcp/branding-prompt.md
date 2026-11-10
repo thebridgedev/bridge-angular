@@ -67,12 +67,18 @@ Not app code. Over MCP: `update_branding`. On the CLI: `bridge branding …`. Or
 
 > `update_branding` is a write tool with real user-visible effect. Confirm with the user before changing a logo or colour — this is the sort of change somebody notices immediately and did not ask for.
 
+## Theming the Bridge components
+
+Theming is plain CSS against a fixed set of tokens: the `--bridge-*` variables, set in the app's global stylesheet (`src/styles.css`), after the `@import '@nebulr-group/bridge-angular/styles.css'` line. The full list with defaults is in `bridge guide mechanisms`; hover, focus and tint follow `--bridge-primary` unless set. Besides colours there are card, weight and shadow tokens (`--bridge-card-bg`, `--bridge-card-shadow`, `--bridge-font-weight-heading` / `-button` / `-label`, `--bridge-button-shadow`) for an app with its own type style. Don't set what the app already gives: Bridge inherits the font and text colour, and its text sizes follow the app's `<body>` (`--bridge-font-size` only to make them differ).
+
+All Bridge styles sit in a CSS cascade layer named `bridge`, so the app's `:root` wins whatever order the stylesheets load in, and any plain CSS the app writes outside a layer overrides Bridge's classes and data attributes without `!important` (`[data-bridge-plan-card] { border-width: 2px; }`). Tailwind utilities are themselves in a layer, so on Bridge's elements they lose where Bridge sets the same property: use plain CSS there, or Tailwind's important modifier. To bind a token to the workspace's live branding, set it from the signal: `<div [style.--bridge-primary]="branding()?.primaryButtonBgColor ?? '#4f46e5'">`.
+
 ## Common mistakes
 
 - **Fetching branding from your own API.** It is already on the live channel; a copy in your backend is stale the moment an admin edits it, and you lose the push.
 - **Reading it once at startup.** It updates live; a one-shot read silently reverts the feature to "needs a reload".
 - **Assuming the colours exist.** They are optional. Always pass a fallback.
-- **Using branding to style the Bridge components.** That is theming — plain CSS.
+- **Using branding to style the Bridge components.** That is theming: start with the `--bridge-*` tokens, and for anything they don't cover, write plain CSS against Bridge's classes and the `[data-bridge-*]` attributes (the theming docs list them).
 - **Confusing it with the hosted login page.** Bridge brands its own pages from the same record; nothing you do in app code affects those.
 
 ## Related guides

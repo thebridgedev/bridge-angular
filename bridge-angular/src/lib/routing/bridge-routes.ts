@@ -85,7 +85,13 @@ export interface BridgeAuthRoutesOptions extends CommonRouteOptions<BridgeAuthPa
   messages?: MessageOverrides;
 }
 
-export type BridgeBillingRoutesOptions = CommonRouteOptions<BridgeBillingPage>;
+export interface BridgeBillingRoutesOptions extends CommonRouteOptions<BridgeBillingPage> {
+  /**
+   * TBP-944 — the "You're on Pro now" banner on the subscription page after a
+   * checkout or a Free pick. `false` hides it. @default true
+   */
+  checkoutNotice?: boolean;
+}
 
 /** What a Bridge page component reads from its route. */
 export interface BridgePageOptions {
@@ -97,6 +103,8 @@ export interface BridgePageOptions {
   framed?: boolean;
   redirectTo: string;
   messages?: MessageOverrides;
+  /** TBP-944 — the subscription page's checkout banner; `false` hides it. */
+  checkoutNotice?: boolean;
 }
 
 function trimSlashes(path: string): string {
@@ -160,12 +168,15 @@ export function bridgeAuthRoutes(options: BridgeAuthRoutesOptions = {}): Routes 
  * pages `success` and `error`. These need a signed-in user: spread them inside
  * your guarded parent. Their addresses are the defaults of
  * `billing.manageRoute`, `billing.paywallRoute` and `billing.paymentErrorRoute`,
- * so nothing Bridge redirects to is a 404.
+ * so nothing Bridge redirects to is a 404. A completed checkout lands back on
+ * the subscription page with a banner (TBP-944); `success` is the old
+ * confirmation page, served for an app whose `billing.successRoute` points at it.
  */
 export function bridgeBillingRoutes(options: BridgeBillingRoutesOptions = {}): Routes {
   const pageOptions: BridgePageOptions = {
     heading: options.heading as BridgePageOptions['heading'],
     redirectTo: options.redirectTo ?? '/',
+    checkoutNotice: options.checkoutNotice ?? true,
   };
   const pages: Array<[BridgeBillingPage, string]> = [
     ['manage', ''],

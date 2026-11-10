@@ -167,6 +167,12 @@ export type {
   BillingInterval,
 } from './lib/components/subscription/plan-selector.component';
 export { BillingPortalButtonComponent } from './lib/components/subscription/billing-portal-button.component';
+// TBP-944 (svelte TBP-813) — a completed checkout lands on `billing.successRoute`
+// (the subscription page by default); this banner, or `checkoutResult`, says so.
+export { CheckoutNoticeComponent } from './lib/components/subscription/checkout-notice.component';
+export type { CheckoutNoticeTemplateContext } from './lib/components/subscription/checkout-notice.component';
+export { checkoutResult, takeCheckoutResult, clearCheckoutResult } from './lib/billing/checkout-result';
+export type { BridgeCheckoutResult } from './lib/billing/checkout-result';
 export { BridgePaywallPageComponent } from './lib/components/subscription/paywall-page.component';
 export { SubscriptionStatusComponent } from './lib/components/subscription/subscription-status.component';
 export { BillingNoticeComponent } from './lib/components/subscription/billing-notice.component';

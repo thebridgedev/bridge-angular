@@ -12,12 +12,13 @@ Billing is not one component. Pick the rows that match what the app has to do; m
 
 | You need | Use | What it does |
 |---|---|---|
-| **The subscription page, the paywall and the checkout return pages** | `...bridgeBillingRoutes()` in `app.routes.ts` (Step 1) | Serves `/subscription` (current plan, "Manage billing", plan picker), `/subscription/plan` (paywall), `/subscription/success`, `/subscription/error` |
+| **The subscription page, the paywall and the checkout return pages** | `...bridgeBillingRoutes()` in `app.routes.ts` (Step 1) | Serves `/subscription` (current plan, "Manage billing", plan picker; a completed checkout lands here with a banner), `/subscription/plan` (paywall), `/subscription/success`, `/subscription/error` |
 | **The app unusable until the workspace has a plan** | Nothing more | With plans, `bridgeAuthGuard()` redirects a plan-less workspace to `/subscription/plan` |
 | Let users update their card, see invoices or cancel | `<bridge-billing-portal-button>` | Already on `/subscription`; place it anywhere else you want it (Step 5) |
 | Let a tenant pick or change a plan on a page of your own | `<bridge-plan-selector>` | Loads plans, applies a free plan directly, launches Stripe Checkout for paid ones |
 | Tell the user about a failed payment, ending trial or cancellation | `<bridge-billing-notice>` | Renders nothing while billing is healthy |
 | Show the current plan and status | `<bridge-subscription-status>` | Display only |
+| Confirm a checkout on a page other than `/subscription` | `<bridge-checkout-notice>` with `billing.successRoute` | The one-time "You're on Pro now" banner; `/subscription` already shows it |
 | Warn as a metered limit fills up | `<bridge-quota-banner metric="…">` | Silent below 80% of the cap |
 | Branch your **code** on plan, status or usage | `createSubscriptionSignal()` / `createQuotaSignal(metric)`, or `bridge.tenant.subscription` | Signals — the `create*` pair must be `.destroy()`-ed in `ngOnDestroy` |
 | Gate a feature on what the plan **bought** | `bridge.tenant.entitlements.can(key)` / `.snapshot()` | Fail-closed until the snapshot loads |
@@ -75,12 +76,14 @@ That one spread is the whole subscription surface:
 
 | Address | Page | Config default it serves |
 |---|---|---|
-| `/subscription` | Current plan, "Manage billing" (`<bridge-billing-portal-button>`), plan picker | `billing.manageRoute` |
+| `/subscription` | Current plan with renewal date and card, "Manage billing" (`<bridge-billing-portal-button>`), plan picker. A completed checkout or a free pick lands here with a confirmation banner | `billing.manageRoute`; also `billing.successRoute` |
 | `/subscription/plan` | The paywall | `billing.paywallRoute` |
-| `/subscription/success` | Where a checkout or a free pick lands | `<manageRoute>/success` |
+| `/subscription/success` | An optional separate confirmation page; used only when `billing.successRoute` points at it | — |
 | `/subscription/error` | Where a failed checkout confirmation lands | `billing.paymentErrorRoute` |
 
-The plan picker loads plans cheapest first, shows interval tabs and each plan's features, selects a free plan directly, confirms before an instant switch, and launches Stripe Checkout for a paid plan. Stripe returns through Bridge's `/auth/oauth-callback`, which confirms the checkout and lands on `/subscription/success`.
+The plan picker loads plans cheapest first, shows interval tabs and each plan's features, selects a free plan directly, confirms before an instant switch, and launches Stripe Checkout for a paid plan. Stripe returns through Bridge's `/auth/oauth-callback`, which confirms the checkout and lands on `billing.successRoute` (the subscription page, which shows a confirmation banner).
+
+**Landing somewhere else after checkout.** If the developer wants users back in the app after paying, set `billing: { successRoute: '/dashboard' }` (their page) in `provideBridge()`. To confirm it there, render `<bridge-checkout-notice />` (import `CheckoutNoticeComponent`) on that page or in the app shell; it shows once, only right after a checkout. For custom copy, read the `checkoutResult` signal. Do not build a confirmation page by hand.
 
 To customise, cheapest first: the `--bridge-*` CSS tokens; then `bridgeBillingRoutes({ frame, heading })` (`frame` is a layout component with a `<router-outlet>`, `heading(page)` returns each page's heading); then take one page over and keep the others, `bridgeBillingRoutes({ overrides: { plan: { component: MyPricing } } })`, building it from `<bridge-plan-selector>`. `path: 'billing'` moves the whole set; set `billing.manageRoute` / `paywallRoute` / `paymentErrorRoute` in `provideBridge()` to match.
 
@@ -88,7 +91,8 @@ To customise, cheapest first: the `--bridge-*` CSS tokens; then `bridgeBillingRo
 
 | Binding | Type | Default | Description |
 |---------|------|---------|-------------|
-| `successRedirect` | `string` (input) | `/subscription` | Where to send the user after a successful payment |
+| `heading` | `string` (input) | (none) | A heading above the plans, beside the Monthly/Yearly switch |
+| `successRedirect` | `string` (input) | `/subscription` | Where to send the user after a successful payment; render `<bridge-checkout-notice />` there to confirm it |
 | `cancelRedirect` | `string` (input) | `/subscription` | Where to send the user after a cancelled payment |
 | `className` / `style` | `string` (input) | `''` | Pass-through styling |
 | `(select)` | `EventEmitter<{ plan, price }>` (output) | — | Fires after free-plan selection or a plan change |
@@ -267,9 +271,9 @@ Before verifying, confirm every item was applied:
 ## Verify
 
 1. Open `/subscription` — plan cards render cheapest first; a tier with monthly + yearly pricing shows interval tabs.
-2. Select a free plan — the plan changes and you land on `/subscription/success`.
+2. Select a free plan — the plan changes and you land on `/subscription` with a "You're on Free now" banner.
 3. Select a paid plan — Stripe Checkout launches.
-4. Complete payment — you land on `/subscription/success` with the new plan showing.
+4. Complete payment — you land on `/subscription` with the new plan showing and a "You're on … now" banner, shown once (gone after a reload).
 5. Cancel payment — you are back on the page you picked from.
 6. Back on `/subscription` as the workspace owner with a paid plan: "Manage billing" shows next to the current plan and opens the Stripe customer portal. Signed in as a member, it is not shown.
 7. Paywall: sign in as a new workspace with no plan — you are sent to `/subscription/plan` before a guarded page renders.

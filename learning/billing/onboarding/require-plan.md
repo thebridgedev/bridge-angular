@@ -83,7 +83,7 @@ provideBridge({ appId: environment.bridgeAppId, billing: { paywallRoute: '/welco
 export class WelcomeComponent {}
 ```
 
-A completed checkout lands on `/subscription/success`; a cancelled one comes back to the page.
+A completed checkout lands on `billing.successRoute` (the subscription page, with a confirmation banner); a cancelled one comes back to the page.
 
 > **Tip:** `<bridge-plan-selector>` is the same picker `<bridge-paywall>` renders inside its modal. See [Choose & switch plans](/billing/onboarding/choose-switch-plans/) for its full input table and customization options.
 

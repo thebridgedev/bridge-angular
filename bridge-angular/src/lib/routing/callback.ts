@@ -7,9 +7,10 @@
  *   - the hosted login (`?code=`) → exchange it, then the stashed deep link
  *     (TBP-629) or the default route;
  *   - a completed Stripe checkout (`?stripe_success&session_id=`) → confirm it
- *     with bridge-api, re-read billing, then `redirect` (default: the
- *     subscription page); a confirmation that fails lands on the payment-error
- *     page (default `/subscription/error`);
+ *     with bridge-api, re-read billing, record the one-shot checkout result
+ *     (TBP-944, svelte TBP-813) so the landing page shows its banner, then
+ *     `redirect` (default: the subscription page); a confirmation that fails
+ *     lands on the payment-error page (default `/subscription/error`);
  *   - a cancelled checkout (`?stripe_cancel`) → `redirect`.
  */
 import { sanitizeReturnTo } from '@nebulr-group/bridge-auth-core';
@@ -20,6 +21,11 @@ export interface CallbackDeps {
   confirmStripeCheckout(sessionId: string): Promise<void>;
   /** Re-read the subscription so the landing page shows the new plan. Never throws. */
   refreshBilling(): Promise<void>;
+  /**
+   * TBP-944 — record that a paid checkout just went through, for the landing
+   * page's banner. Not called when the confirmation fails.
+   */
+  completeCheckout?(): void;
   /** The deep link stashed before a hosted login (auth-core `takeReturnTo`). */
   takeReturnTo(): string | null;
   logError?(message: string, err: unknown): void;
@@ -67,6 +73,7 @@ export async function resolveCallbackTarget(
       return paths.paymentErrorRoute;
     }
     await deps.refreshBilling().catch(() => {});
+    deps.completeCheckout?.();
     return stripeReturnTarget(params, paths);
   }
 

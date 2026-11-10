@@ -18,6 +18,7 @@ import {
   type BridgePageOptions,
 } from '../../routing/bridge-routes';
 import { resolveCallbackTarget } from '../../routing/callback';
+import { markCheckoutComplete } from '../../billing/checkout-result';
 import { routeSegments } from '../../routing/route-path';
 import { logger } from '../../shared/logger';
 import { AuthService } from '../../shared/services/auth.service';
@@ -216,6 +217,9 @@ export class BridgeAuthPageComponent implements OnInit {
         handleCallback: (code) => this.auth.handleCallback(code),
         confirmStripeCheckout: (id) => this.auth.confirmStripeCheckout(id),
         refreshBilling: () => this.auth.loadSubscription(),
+        // TBP-944 — the landing page (the subscription page by default) says
+        // the checkout went through; no separate confirmation page.
+        completeCheckout: () => markCheckoutComplete({ kind: 'checkout' }),
         takeReturnTo,
         logError: (message, err) => logger.error(message, err),
       },

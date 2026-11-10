@@ -1,6 +1,6 @@
 {
   "name": "@nebulr-group/bridge-angular",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "The Bridge for Angular: sign-in, workspaces and roles, feature flags, Stripe subscriptions and plan limits with providers and route helpers.",
   "author": "Iman Pouya",
   "license": "MIT",

@@ -10,20 +10,23 @@ import { AuthService } from '../../shared/services/auth.service';
     </button>
   `,
   styles: [`
-    .login-button {
-      display: inline-block;
-      padding: 0.5rem 1rem;
-      background-color: #3b82f6;
-      color: white;
-      border-radius: 0.25rem;
-      border: none;
-      cursor: pointer;
-      font-size: 0.875rem;
-      transition: background-color 0.2s;
-    }
+    /* TBP-944 — in the \`bridge\` layer with the stylesheet, so any CSS of the app wins. */
+    @layer bridge {
+      .login-button {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        background-color: #3b82f6;
+        color: white;
+        border-radius: 0.25rem;
+        border: none;
+        cursor: pointer;
+        font-size: calc(0.875 * var(--bridge-text-base, 1rem));
+        transition: background-color 0.2s;
+      }
 
-    .login-button:hover {
-      background-color: #2563eb;
+      .login-button:hover {
+        background-color: #2563eb;
+      }
     }
   `],
 })

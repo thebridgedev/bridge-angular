@@ -17,6 +17,12 @@
  * reloads the subscription, then redirects to the caller's `successRedirect` /
  * `cancelRedirect`. Mirrors bridge-svelte's BridgeBootstrap and bridge-react's
  * CallbackHandler.
+ *
+ * TBP-944 (svelte TBP-813): the default card is a surface of its own with a
+ * formatted price, "Choose / Upgrade to / Switch to" buttons and the current
+ * plan flagged; an optional `heading` sits beside the interval switch; a Free
+ * pick records the one-shot checkout result, so the landing page shows the same
+ * banner a paid checkout gets.
  */
 import { NgTemplateOutlet } from '@angular/common';
 import {
@@ -32,8 +38,10 @@ import {
 } from '@angular/core';
 import type { Plan, PriceOfferSdk } from '@nebulr-group/bridge-auth-core';
 import { Router } from '@angular/router';
+import { markCheckoutComplete } from '../../billing/checkout-result';
 import { BridgeConfigService } from '../../config/bridge-config.service';
 import { AuthService } from '../../shared/services/auth.service';
+import { formatAmount, intervalSuffix, minAmount, pickKind, pickLabel, type PickKind } from './plan-format';
 
 /**
  * Context passed to a custom `planCardTemplate`. Mirrors the data the
@@ -97,11 +105,6 @@ export function pricesForInterval(plan: Plan, interval: BillingInterval): PriceO
   if (exact.length > 0) return exact;
   const free = plan.prices.find((p) => p.amount === 0);
   return free ? [free] : [];
-}
-
-function minAmount(plan: Plan): number {
-  const amounts = (plan.prices ?? []).map((p) => p.amount);
-  return amounts.length > 0 ? Math.min(...amounts) : Number.POSITIVE_INFINITY;
 }
 
 /** Cheapest first, by each plan's cheapest price across all intervals (stable across tabs). */
@@ -177,7 +180,7 @@ type UiState =
             <p class="bridge-plan-empty">No plans available.</p>
           }
         } @else if (plans()) {
-          @if (intervals().length >= 2) {
+          <ng-template #intervalTabs>
             <div class="bridge-plan-interval-tabs" data-bridge-plan-interval-tabs role="group" aria-label="Billing interval">
               @for (interval of intervals(); track interval) {
                 <button
@@ -191,6 +194,17 @@ type UiState =
                 </button>
               }
             </div>
+          </ng-template>
+
+          @if (heading) {
+            <div class="bridge-plan-head" data-bridge-plan-head>
+              <h2 class="bridge-plan-heading">{{ heading }}</h2>
+              @if (intervals().length >= 2) {
+                <ng-container [ngTemplateOutlet]="intervalTabs"></ng-container>
+              }
+            </div>
+          } @else if (intervals().length >= 2) {
+            <ng-container [ngTemplateOutlet]="intervalTabs"></ng-container>
           }
           <div class="bridge-plan-cards" data-bridge-plan-cards>
             @for (plan of sortedPlans(); track plan.key) {
@@ -204,14 +218,25 @@ type UiState =
                 data-bridge-plan-card
                 [attr.data-current]="plan.key === currentPlanKey()"
                 [attr.data-trial]="plan.trial"
+                [attr.data-pick]="kindOf(plan)"
                 class="bridge-plan-card"
               >
+                @if (plan.key === currentPlanKey()) {
+                  <span class="bridge-plan-current-flag" data-bridge-plan-current-flag>Your plan</span>
+                }
                 <div class="bridge-plan-card-header">
                   <h3 class="bridge-plan-name">{{ plan.name }}</h3>
                   @if (plan.trial && (plan.trialDays ?? 0) > 0) {
                     <span class="bridge-plan-trial-badge">{{ plan.trialDays }}-day trial</span>
                   }
                 </div>
+
+                @if (visiblePrices(plan)[0]; as shownPrice) {
+                  <div class="bridge-plan-price" data-bridge-plan-price>
+                    <span class="bridge-plan-price-amount">{{ amount(shownPrice) }}</span>
+                    <span class="bridge-plan-price-interval">{{ suffix(shownPrice) }}</span>
+                  </div>
+                }
 
                 @if (planDescriptionTemplate) {
                   <ng-container
@@ -225,7 +250,12 @@ type UiState =
                 @if (features(plan).length > 0) {
                   <ul class="bridge-plan-features" data-bridge-plan-features [attr.aria-label]="'Included in ' + plan.name">
                     @for (feature of features(plan); track feature.key) {
-                      <li class="bridge-plan-feature" [attr.data-feature]="feature.key">{{ feature.name }}</li>
+                      <li class="bridge-plan-feature" [attr.data-feature]="feature.key">
+                        <svg class="bridge-plan-feature-check" width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+                          <path d="M3 8.5l3.2 3L13 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        <span>{{ feature.name }}</span>
+                      </li>
                     }
                   </ul>
                 }
@@ -234,28 +264,22 @@ type UiState =
                   @for (price of visiblePrices(plan); track price.recurrenceInterval + price.currency) {
                     <button
                       type="button"
-                      class="bridge-btn-primary bridge-plan-select-btn"
+                      [class]="buttonClass(plan)"
                       [disabled]="plan.key === currentPlanKey() || picking()"
                       (click)="handlePick(plan, price)"
                     >
-                      @if (plan.key === currentPlanKey()) {
-                        Current plan
-                      } @else if (price.amount === 0) {
-                        Select free plan
-                      } @else {
-                        {{ price.amount }} {{ price.currency.toUpperCase() }} / {{ price.recurrenceInterval }}
-                      }
+                      {{ buttonLabel(plan, price) }}
                     </button>
                   }
 
                   @if (plan.prices.length === 0) {
                     <button
                       type="button"
-                      class="bridge-btn-primary bridge-plan-select-btn"
+                      [class]="buttonClass(plan)"
                       [disabled]="plan.key === currentPlanKey() || picking()"
-                      (click)="selectFree(plan)"
+                      (click)="handlePick(plan, noPrice)"
                     >
-                      {{ plan.key === currentPlanKey() ? 'Current plan' : 'Select plan' }}
+                      {{ label(plan) }}
                     </button>
                   }
                 </div>
@@ -289,7 +313,7 @@ type UiState =
               <strong>{{ target.plan.name }}</strong> ({{ formatPrice(target.price) }}).
             </p>
             <p class="bridge-plan-confirm-note">
-              The change takes effect immediately — any price difference is prorated on your next invoice.
+              The change takes effect immediately. Any price difference is prorated on your next invoice.
             </p>
             @if (confirmError()) {
               <div class="bridge-alert bridge-alert-error" role="alert">{{ confirmError() }}</div>
@@ -315,6 +339,8 @@ type UiState =
   `,
 })
 export class PlanSelectorComponent implements OnInit {
+  /** TBP-944 — a heading above the plans, beside the Monthly/Yearly switch. */
+  @Input() heading?: string;
   /** Where to send the user after a successful Stripe payment. @default '/subscription' */
   @Input() successRedirect = '/subscription';
   /** Where to send the user if they cancel Stripe Checkout. @default '/subscription' */
@@ -402,6 +428,43 @@ export class PlanSelectorComponent implements OnInit {
     return planFeatures(plan);
   }
 
+  /** TBP-944 — what picking this plan does, relative to the current one. */
+  protected kindOf(plan: Plan): PickKind {
+    return pickKind(plan, this.currentPlan());
+  }
+
+  /** "Choose X", "Upgrade to X", "Switch to X" or "Current plan". */
+  protected label(plan: Plan): string {
+    return pickLabel(this.kindOf(plan), plan);
+  }
+
+  /** The label, plus the price when the card offers more than one under this tab. */
+  protected buttonLabel(plan: Plan, price: PriceOfferSdk): string {
+    const kind = this.kindOf(plan);
+    const label = pickLabel(kind, plan);
+    return this.visiblePrices(plan).length > 1 && kind !== 'current'
+      ? `${label} · ${formatAmount(price.amount, price.currency)}`
+      : label;
+  }
+
+  /** An upgrade or a first pick is the primary action; a switch and the current plan are secondary. */
+  protected buttonClass(plan: Plan): string {
+    const kind = this.kindOf(plan);
+    const variant = kind === 'current' || kind === 'switch' ? 'bridge-btn-secondary' : 'bridge-btn-primary';
+    return `${variant} bridge-plan-select-btn`;
+  }
+
+  protected amount(price: PriceOfferSdk): string {
+    return formatAmount(price.amount, price.currency);
+  }
+
+  protected suffix(price: PriceOfferSdk): string {
+    return intervalSuffix(price);
+  }
+
+  /** The price a plan with no prices is picked at (as svelte's card does). */
+  protected readonly noPrice: PriceOfferSdk = { id: '', amount: 0, currency: 'usd', recurrenceInterval: 'month' };
+
   protected partContext(plan: Plan): PlanPartTemplateContext {
     const isCurrent = plan.key === this.currentPlanKey();
     return { $implicit: { plan, isCurrent }, plan, isCurrent };
@@ -422,6 +485,11 @@ export class PlanSelectorComponent implements OnInit {
     const planField = this.status()?.plan as { key: string } | string | undefined;
     return typeof planField === 'string' ? planField : planField?.key ?? null;
   });
+
+  /** The current plan from the catalogue, or null. */
+  protected readonly currentPlan = computed<Plan | null>(
+    () => (this.plans() ?? []).find((p) => p.key === this.currentPlanKey()) ?? null,
+  );
 
   ngOnInit(): void {
     if (!this.status() && !this.loading()) {
@@ -505,6 +573,9 @@ export class PlanSelectorComponent implements OnInit {
       this.select.emit({ plan, price });
       return;
     }
+    // TBP-944 (svelte TBP-813) — the landing page shows the same banner a
+    // paid checkout gets.
+    markCheckoutComplete({ kind: 'plan', planName: plan.name });
     void this.router?.navigateByUrl(this.successRedirect);
   }
 
@@ -527,16 +598,12 @@ export class PlanSelectorComponent implements OnInit {
   protected readonly successNotice = signal<string | null>(null);
   private successTimer: ReturnType<typeof setTimeout> | undefined;
 
-  protected readonly currentPlanName = computed(() => {
-    const key = this.currentPlanKey();
-    const found = (this.plans() ?? []).find((p) => p.key === key);
-    return found?.name ?? key ?? 'your current plan';
-  });
+  protected readonly currentPlanName = computed(
+    () => this.currentPlan()?.name ?? this.currentPlanKey() ?? 'your current plan',
+  );
 
   protected formatPrice(price: PriceOfferSdk): string {
-    return price.amount === 0
-      ? 'Free'
-      : `${price.amount} ${price.currency.toUpperCase()} / ${price.recurrenceInterval}`;
+    return price.amount === 0 ? 'Free' : `${formatAmount(price.amount, price.currency)} ${intervalSuffix(price)}`;
   }
 
   /** Run the confirmed switch. A failure shows inside the dialog, which stays open. */

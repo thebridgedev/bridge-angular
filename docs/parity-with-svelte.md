@@ -28,6 +28,7 @@ Legend: **present** (already on `main` before TBP-744) · **added** (TBP-744 / t
 | OAuth callback + Stripe return handling in the root `load` | the `oauth-callback` page does it (`resolveCallbackTarget`) | added — **different**: no root `load`; the callback page owns it |
 | `BRIDGE_AUTH_PAGES`, `parseBridgeAuthRoute` | `BRIDGE_AUTH_PAGES`; parsing is the router's | added / different — the router matches paths |
 | Route guard rules (`match`, `public`, `featureFlag`, `redirectTo`), return-to, flag reasons, re-check on authorization change | `bridgeAuthGuard()` | present |
+| A route's flag is a live kill switch: the current page is re-checked when a flag its rule names changes, also across a reconnect (TBP-575) | same, from `provideBridge()` | added (0.9.1) |
 | Sign-in pages need a public rule | pages carry `data.bridgePublic`, honoured by the guard | added — **different**: stricter default, no rule needed |
 | `LoginForm`, `SignupForm`, `ForgotPassword`, `MagicLink`, `MfaChallenge`, `MfaSetup`, `TenantSelector`, `WorkspaceSelector`, `SsoButton` | `<bridge-login-form>` … standalone components | present |
 | Passkeys: `PasskeyLogin`, `PasskeySetup`, `PasskeyRequestSetupLink` (the WebAuthn ceremony via `@simplewebauthn/browser`; no passkey on the device → request a setup link in place) | same | fixed in the TBP-744 follow-up: the components called auth-core methods that do not exist and never asked the authenticator |
@@ -69,6 +70,9 @@ Legend: **present** (already on `main` before TBP-744) · **added** (TBP-744 / t
 | Dev note on direct plan checks (TBP-705) | same | added |
 | `bridge.usage.report / set / getQueueStatus` | `BridgeService.usage` | added |
 | Dev warning when backend and page count the same metric (`X-Bridge-Usage-Counted`) | same, read by `bridgeInterceptor` / `bridgeFetch` | added |
+| Plan features, billing state and flag definitions read before the first render, each capped at 1.5 s; flags re-evaluate when the billing stores move (TBP-810) | same, awaited by `provideBridge()`'s app initializer | added (0.9.1) |
+| Billing refresh rule: re-read on a renewed sign-in, live billing events and tab focus after 30 s; one retry; re-reads keep the plan on screen (TBP-762) | same (`billing/billing-refresh.ts`, `AuthService.ensureSubscription`) | added (0.9.1) |
+| Empty or failed plan list offers "Try again" (TBP-762) | same | added (0.9.1) |
 
 ## Styling
 
@@ -94,4 +98,4 @@ Legend: **present** (already on `main` before TBP-744) · **added** (TBP-744 / t
 
 ## Tests
 
-Every row marked **added** has vitest coverage in `bridge-angular/src/lib/**/*.spec.ts`: `routing/ten-line-routing.spec.ts`, `guards/ten-line-guard.spec.ts`, `billing/plan-limits.spec.ts`, `config/resolve-config.spec.ts`, `styles-tokens.spec.ts`, `billing/double-count-warning.spec.ts`, and the S2 and confirmation blocks of `components/subscription/plan-selector.component.spec.ts`. The TBP-944 rows: `styles-layer.spec.ts`, `billing/checkout-result.spec.ts`, `components/subscription/plan-format.spec.ts`, `components/subscription/checkout-notice.component.spec.ts`, the default-card block of `plan-selector.component.spec.ts`, and the billing-destination and callback blocks of `routing/ten-line-routing.spec.ts`.
+Every row marked **added** has vitest coverage in `bridge-angular/src/lib/**/*.spec.ts`: `routing/ten-line-routing.spec.ts`, `guards/ten-line-guard.spec.ts`, `billing/plan-limits.spec.ts`, `config/resolve-config.spec.ts`, `styles-tokens.spec.ts`, `billing/double-count-warning.spec.ts`, and the S2 and confirmation blocks of `components/subscription/plan-selector.component.spec.ts`. The TBP-944 rows: `styles-layer.spec.ts`, `billing/checkout-result.spec.ts`, `components/subscription/plan-format.spec.ts`, `components/subscription/checkout-notice.component.spec.ts`, the default-card block of `plan-selector.component.spec.ts`, and the billing-destination and callback blocks of `routing/ten-line-routing.spec.ts`. The 0.9.1 rows: `core/startup-reads.spec.ts`, `billing/billing-refresh.spec.ts`, `guards/flag-kill-switch.spec.ts` and the first-render block of `bootstrap/bridge-bootstrap.service.spec.ts`. The guides are checked by `src/doc-currency.spec.ts` (every gate is a flag, seats; TBP-705 / TBP-763, mirrors bridge-svelte) and `src/guide-drift.spec.ts` (every export, component, input and config option a guide names exists).

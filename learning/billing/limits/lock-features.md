@@ -54,9 +54,9 @@ A custom prompt gets `reason`, `feature` and `openUpgrade()` from the fallback t
 
 You get the best of both: the **entitlement** supplies plan eligibility (and stays correct across plan renames or a bespoke grant to one enterprise customer), while the **flag** adds everything flags give you *on top*: percentage rollouts within a plan, an instant kill switch, per-segment overrides, all without a code change. See the [Feature Flags → Target by plan or role](/feature-flags/targeting/by-plan-or-role/) guide for the full list of `bridge:billing.*` targeting attributes (plan, subscription status, quotas, entitlements).
 
-## Using entitlements standalone
+## Exceptions: checking the plan directly
 
-Not using Bridge feature flags? Gate directly on the entitlement. It's simpler; you just lose the operational control (rollout %, kill switch, experiments) a flag would add on top.
+When the developer explicitly asks for no flag, `*bridgeEntitled` (markup), `injectEntitlements()` and `bridge.tenant.entitlements` (code) read the plan's list directly. They are fail-closed (`false` until Bridge has answered), and in development the first direct check logs a one-time note pointing at the flag rule. You lose what a flag adds on top: rollout percentages, a kill switch, a one-customer exception without a code change.
 
 Read the reactive snapshot in your markup:
 

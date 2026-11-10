@@ -80,6 +80,39 @@ function findMatchingRule(
 }
 
 /**
+ * TBP-575 — does the route rule that governs `pathname` name this flag?
+ * Without a pathname: does any route rule name it?
+ *
+ * The live re-check runs on every flag mutation the app receives, and most of
+ * them have nothing to do with routing. A re-check can cost a subscription
+ * status round-trip (the paywall step), so a flag nothing routes on must not
+ * trigger one. A cost guard, not a correctness one. First match wins, as in
+ * the guard itself.
+ */
+export function routeRulesReferenceFlag(
+  key: string,
+  config: RouteGuardConfig | null | undefined,
+  pathname?: string,
+): boolean {
+  const rules = config?.rules ?? [];
+  const candidates =
+    pathname === undefined
+      ? rules
+      : (() => {
+          const rule = findMatchingRule(pathname, { rules });
+          return rule ? [rule] : [];
+        })();
+  return candidates.some((rule) => {
+    const req = rule.featureFlag;
+    if (!req) return false;
+    if (typeof req === 'string') return req === key;
+    if ('any' in req) return req.any.includes(key);
+    if ('all' in req) return req.all.includes(key);
+    return false;
+  });
+}
+
+/**
  * TBP-756 — why a route's feature flag refused, as the redirect carries it.
  *   - `reason`: `plan` (an upgrade alone would open it), `permission` (this
  *     person's role or privileges), `off` (switched off for everyone), `rule`

@@ -11,7 +11,14 @@
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useBridge } from '@nebulr-group/bridge-auth-core';
+vi.mock('@nebulr-group/bridge-auth-core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@nebulr-group/bridge-auth-core')>()),
+  // The billing-state read the refresh rule makes (TBP-762). Mocked: no HTTP.
+  fetchBillingState: vi.fn(async () => ({ plan: { slug: 'pro', name: 'Pro' }, status: 'active' })),
+}));
+
+import { fetchBillingState, useBridge } from '@nebulr-group/bridge-auth-core';
+import { __resetBillingRefreshForTests } from '../billing/billing-refresh';
 import { BridgeRuntimeService } from './bridge-runtime.service';
 import { BridgeConfigService } from '../config/bridge-config.service';
 import { AuthService } from '../shared/services/auth.service';
@@ -41,6 +48,8 @@ class StubAuthService {
 let auth: StubAuthService;
 
 beforeEach(() => {
+  __resetBillingRefreshForTests();
+  vi.mocked(fetchBillingState).mockClear();
   auth = new StubAuthService();
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
@@ -79,12 +88,12 @@ describe('billing reads renew a stale sign-in (TBP-762)', () => {
   });
 
   it('<bridge-subscription-status> passes the handler to its billing read', () => {
-    const mount = vi.spyOn(useBridge().subscription, 'mount').mockResolvedValue(undefined as never);
+    vi.spyOn(useBridge().subscription, 'snapshot').mockReturnValue({ state: null, loading: false, error: null });
     const fixture = TestBed.createComponent(SubscriptionStatusComponent);
     fixture.detectChanges();
 
-    expect(mount).toHaveBeenCalledTimes(1);
-    const opts = mount.mock.calls[0][0] as { onTokenStale?: unknown; accessToken?: string };
+    expect(fetchBillingState).toHaveBeenCalledTimes(1);
+    const opts = vi.mocked(fetchBillingState).mock.calls[0][0] as { onTokenStale?: unknown; accessToken?: string };
     expect(opts.accessToken).toBe('header.eyJ0aWQiOiJ3cy0xIn0.sig');
     expect(opts.onTokenStale).toBe(staleHandler);
     fixture.destroy();
@@ -92,12 +101,11 @@ describe('billing reads renew a stale sign-in (TBP-762)', () => {
 
   it('<bridge-billing-notice> passes the handler to its billing read', () => {
     vi.spyOn(useBridge().subscription, 'snapshot').mockReturnValue({ state: null, loading: false, error: null });
-    const mount = vi.spyOn(useBridge().subscription, 'mount').mockResolvedValue(undefined as never);
     const fixture = TestBed.createComponent(BillingNoticeComponent);
     fixture.detectChanges();
 
-    expect(mount).toHaveBeenCalledTimes(1);
-    const opts = mount.mock.calls[0][0] as { onTokenStale?: unknown };
+    expect(fetchBillingState).toHaveBeenCalledTimes(1);
+    const opts = vi.mocked(fetchBillingState).mock.calls[0][0] as { onTokenStale?: unknown };
     expect(opts.onTokenStale).toBe(staleHandler);
     fixture.destroy();
   });

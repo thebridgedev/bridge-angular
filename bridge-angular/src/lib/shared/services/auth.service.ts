@@ -32,6 +32,7 @@ import {
   type TokenSet,
 } from '@nebulr-group/bridge-auth-core';
 import { logger } from '../logger';
+import { billingRetryDelay } from '../../billing/billing-refresh';
 
 export interface SubscriptionState {
   status: SubscriptionStatus | null;
@@ -134,6 +135,7 @@ export class AuthService {
     this._instance.on('auth:logout', () => {
       this._tokens.set(null);
       this._profile.set(null);
+      this.resetSubscription();
     });
 
     this._instance.on('auth:token-refreshed', (tokens) => {
@@ -155,7 +157,7 @@ export class AuthService {
 
     this._instance.on('auth:workspace-changed', (tokens) => {
       this._tokens.set(tokens);
-      this._subscription.set({ status: null, plans: null, loading: false, error: null });
+      this.resetSubscription();
       this._instance!
         .getProfile()
         .then((p) => this._profile.set(p ?? null))
@@ -248,7 +250,7 @@ export class AuthService {
       this._profile.set(null);
       this._authState.set('unauthenticated');
       this._tenantUsers.set([]);
-      this._subscription.set({ status: null, plans: null, loading: false, error: null });
+      this.resetSubscription();
       await this.getBridgeAuth().logout();
     } catch (err) {
       logger.error('[auth] logout failed:', err);
@@ -325,19 +327,109 @@ export class AuthService {
   }
 
   // ── Subscription (Billing 2.0) ────────────────────────────────────────────
+  //
+  // TBP-762 (svelte `core/bridge-instance.ts`) — the plan list + current plan
+  // follow the billing refresh rule (`billing/billing-refresh.ts`): screens
+  // call `ensureSubscription()` on mount; a renewed sign-in, a live billing
+  // event and tab focus re-read it. A re-read keeps the last answer on screen
+  // (no spinner flash), a failed read or an empty list is asked once more, and
+  // a read started before a sign-out or workspace switch is discarded.
 
-  /** Load subscription status + plan list into the `subscription` signal. */
-  async loadSubscription(): Promise<void> {
-    this._subscription.update((s) => ({ ...s, loading: true, error: null }));
-    try {
-      const [status, plans] = await Promise.all([
-        this.getBridgeAuth().getSubscriptionStatus(),
-        this.getBridgeAuth().getPlans(),
-      ]);
-      this._subscription.set({ status, plans, loading: false, error: null });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to load subscription';
-      this._subscription.update((s) => ({ ...s, loading: false, error: msg }));
+  private _subInflight: Promise<void> | null = null;
+  private _subAgain = false;
+  private _subLoadedAt = 0;
+  private _subWanted = false;
+  /** Bumped on sign-out and workspace switch; a read started before is discarded. */
+  private _subGeneration = 0;
+
+  private resetSubscription(): void {
+    this._subGeneration += 1;
+    this._subLoadedAt = 0;
+    this._subscription.set({ status: null, plans: null, loading: false, error: null });
+  }
+
+  /** True once any screen has asked for the plan list / status in this session. */
+  subscriptionWanted(): boolean {
+    return this._subWanted;
+  }
+
+  /**
+   * Re-read subscription status + plan list into the `subscription` signal.
+   * Concurrent calls share one read; a call during a read queues one more.
+   * Never rejects.
+   */
+  loadSubscription(): Promise<void> {
+    this._subWanted = true;
+    if (this._subInflight) {
+      this._subAgain = true;
+      return this._subInflight;
+    }
+    this._subInflight = (async () => {
+      try {
+        do {
+          this._subAgain = false;
+          await this.readSubscriptionOnce();
+        } while (this._subAgain);
+      } finally {
+        this._subInflight = null;
+      }
+    })();
+    return this._subInflight;
+  }
+
+  /**
+   * Read only when nothing has been read yet or the last read is older than
+   * `maxAgeMs`. What screens call on mount instead of fetching on their own.
+   */
+  ensureSubscription(maxAgeMs = 30_000): Promise<void> {
+    this._subWanted = true;
+    if (this._subInflight) return this._subInflight;
+    if (this._subLoadedAt > 0 && Date.now() - this._subLoadedAt < maxAgeMs) return Promise.resolve();
+    return this.loadSubscription();
+  }
+
+  private async readSubscriptionOnce(): Promise<void> {
+    const generation = this._subGeneration;
+    const current = this._subscription();
+    const hasData = current.status !== null || current.plans !== null;
+    if (!hasData) this._subscription.update((s) => ({ ...s, loading: true, error: null }));
+    const wait = () => new Promise<void>((r) => setTimeout(r, billingRetryDelay()));
+
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const [status, plans] = await Promise.all([
+          this.getBridgeAuth().getSubscriptionStatus(),
+          this.getBridgeAuth().getPlans(),
+        ]);
+        if (generation !== this._subGeneration) return;
+        // An empty list is more often a read that raced a change than an app
+        // with no plans: ask once more before believing it.
+        if ((plans?.length ?? 0) === 0 && attempt === 0) {
+          await wait();
+          if (generation !== this._subGeneration) return;
+          continue;
+        }
+        this._subscription.set({ status, plans, loading: false, error: null });
+        this._subLoadedAt = Date.now();
+        return;
+      } catch (err) {
+        if (generation !== this._subGeneration) return;
+        if (attempt === 0) {
+          await wait();
+          if (generation !== this._subGeneration) return;
+          continue;
+        }
+        const msg = err instanceof Error ? err.message : 'Failed to load subscription';
+        logger.warn('[auth] subscription read failed:', msg);
+        const latest = this._subscription();
+        if (latest.status !== null || latest.plans !== null) {
+          // Keep the last good answer on screen; the next trigger re-reads.
+          this._subscription.update((s) => ({ ...s, loading: false }));
+        } else {
+          this._subscription.update((s) => ({ ...s, loading: false, error: msg }));
+        }
+        return;
+      }
     }
   }
 }

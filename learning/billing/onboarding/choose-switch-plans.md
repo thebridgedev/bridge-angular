@@ -34,9 +34,11 @@ export class SubscriptionComponent {}
 | `planCardTemplate` | `TemplateRef<PlanCardTemplateContext>` | (none) | Replaces each whole card. Context: `plan`, `prices`, `isCurrent`, `interval`, `onPick(price)` |
 | `planDescriptionTemplate` | `TemplateRef<PlanPartTemplateContext>` | (none) | Replaces the default card's description. Context: `plan`, `isCurrent` |
 | `planFooterTemplate` | `TemplateRef<PlanPartTemplateContext>` | (none) | Rendered at the bottom of the default card. Context: `plan`, `isCurrent` |
-| `emptyStateTemplate` / `loadingStateTemplate` | `TemplateRef` | (none) | Replace the empty and loading states |
+| `emptyStateTemplate` / `loadingStateTemplate` | `TemplateRef` | (none) | Replace the empty and loading states. The default empty state says the plans could not be loaded and offers Try again |
 | `className` | `string` | `''` | Class applied to the root element |
 | `style` | `string` | `''` | Inline style applied to the root element |
+
+The plan list stays current on its own: it is re-read when a plan or subscription changes in Bridge, when the sign-in is renewed, and when the tab regains focus after 30 seconds, with the cards kept on screen meanwhile. An empty list is asked for once more before it is shown, and a list that still comes back empty or fails offers a **Try again** button instead of "No plans available."
 
 Under the hood, a pick branches on the price and the workspace's payment state:
 

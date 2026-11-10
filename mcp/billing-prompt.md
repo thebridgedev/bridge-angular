@@ -6,6 +6,16 @@ You are wiring **billing UI** into an Angular (standalone-components, v19+) appl
 
 > **No `/billing` subpath.** Like the flag API, the whole billing surface is on the **main entry** — import every component and signal helper from `@nebulr-group/bridge-angular` (only `./styles.css` is a separate export).
 
+## The one rule for app code
+
+**Every gate in app code is a flag.** A link, a page, a button, an endpoint: if some people get it and others do not, the code asks a flag, and the flag's rule says why: a privilege (`privileges contains "USER_WRITE"`), a plan feature (`bridge:billing.entitlement.analytics eq true`) or a rollout. App code never reads a role, a privilege list, the plan or a plan feature to decide what someone may see or do.
+
+Two things are not gates and are not flags: **numbers** are plan limits (`<bridge-quota-gate>` in the browser, `@RequireQuota` on the backend), and **permission on one specific record** stays in app code ("only the author edits their post").
+
+Before calling the work done, run `npx @nebulr-group/bridge-cli check gates` in the project. It lists every direct role, privilege, plan or plan-feature check with the flag to use instead. Fix each one.
+
+In Angular: a piece of UI is `<bridge-feature-flag key="…">`; a page is a route rule `{ match: '/admin/*', featureFlag: 'admin-area', redirectTo: '/' }` in the `RouteGuardConfig` passed to `provideBridge()`; a nav link is the same `<bridge-feature-flag>` around the link.
+
 ## Decide first — which billing surface do you need?
 
 Billing is not one component. Pick the rows that match what the app has to do; most apps need the first three. Every component is standalone and imports from the main entry.
@@ -21,13 +31,35 @@ Billing is not one component. Pick the rows that match what the app has to do; m
 | Confirm a checkout on a page other than `/subscription` | `<bridge-checkout-notice>` with `billing.successRoute` | The one-time "You're on Pro now" banner; `/subscription` already shows it |
 | Warn as a metered limit fills up | `<bridge-quota-banner metric="…">` | Silent below 80% of the cap |
 | Branch your **code** on plan, status or usage | `createSubscriptionSignal()` / `createQuotaSignal(metric)`, or `bridge.tenant.subscription` | Signals — the `create*` pair must be `.destroy()`-ed in `ngOnDestroy` |
-| Gate a feature on what the plan **bought** | `bridge.tenant.entitlements.can(key)` / `.snapshot()` | Fail-closed until the snapshot loads |
+| **A feature some plans sell** (analytics, SSO) | The feature on the plan (`bridge plan feature add pro analytics`), a flag ruled `bridge:billing.entitlement.analytics eq true`, and `<bridge-feature-flag key="analytics" [upgrade]="true">` around the markup | See *Plan features* in Step 3. A whole page is a route rule on the same flag |
 
 **Reach for these before writing plan cards or calling Stripe yourself.** `<bridge-plan-selector>` already covers the free/paid split, the current-plan state, the Checkout redirect and the return through Bridge's `/auth/oauth-callback`; a hand-rolled version has to keep all four correct as plans change, and a wrong Checkout call takes real money.
 
-**Entitlements are not feature flags.** An entitlement says what the tenant *bought* (this guide); a flag says what is *exposed* (`feature-flags-prompt.md`). Gating a paid capability on a flag leaves it switchable for people who never paid.
+**A plan feature is gated by a flag that reads the plan.** The plan lists what it sells; the flag's rule (`bridge:billing.entitlement.<feature> eq true`) reads that list, and the app asks the flag. The rule never names plans, so changing what a plan sells is one edit on the plan, and the flag can later carry a rollout or a one-customer exception without a code change.
 
 > **Never hardcode a billing-portal or Stripe URL.** `<bridge-billing-portal-button>` (and `getBridgeAuth().getBillingPortalUrl()` under it) mints a portal session for the signed-in workspace at click time; a pasted URL either expires or opens whichever workspace it was minted for.
+
+## Configuring plans, prices and quotas
+
+These can be configured from the Bridge **MCP tools** or the **`bridge` CLI**. Same operations, same API:
+
+| Operation | MCP | CLI |
+|---|---|---|
+| List plans (with prices + quotas) | `list_plans` | `bridge plan list` / `bridge plan get <key>` |
+| Create a plan | `create_plan` — `key`, `name`, `description?`, `trial?`, `trialDays?` | `bridge plan create --key … --name …` |
+| Edit a plan | `update_plan` — `key`, `name?`, `description?` | `bridge plan update --key … --name …` |
+| Add/replace a price | `set_plan_price` — `key`, `amount`, `interval`, `currency?` | `bridge plan price set <key> --amount … --interval …` |
+| Remove a price | `remove_plan_price` — `key`, `interval`, `currency?` | `bridge plan price rm <key> --interval …` |
+| Add/replace a quota | `set_plan_quota` — `key`, `metric`, `limit`, `policy`, `kind?`, `priceAmount?`, `priceCurrency?` | `bridge plan quota set <key> --metric … --limit … --policy … [--kind gauge]` |
+| Remove a quota | `remove_plan_quota` — `key`, `metric` | `bridge plan quota rm <key> --metric …` |
+| Sell an on/off feature on a plan | `add_plan_feature` | `bridge plan feature add <key> <feature> --name "…"` |
+| Stop selling it on a plan | `remove_plan_feature` | `bridge plan feature remove <key> <feature>` |
+
+Use whichever is already set up. **If the user asks for a specific surface, use that one** — both reach the same API. If neither is available, offer to install one; only fall back to the dashboard if they decline.
+
+**Counter or gauge?** If deleting it frees room, it's a gauge and your app counts it; if it happened, it's a counter and Bridge counts it. Projects, seats and documents are gauges (`kind: "gauge"` — "8 of 10 projects", never reset); AI completions, exports and API calls are counters (the default — "40 of 100 this month", reset each period). Every gauge value comes from your app, except seats.
+
+**Seats** are a plan limit the app names (`seats`), kind gauge, that Bridge counts from workspace membership, pending invites included: `bridge plan quota set <plan> --metric seats --limit N --policy hard --kind gauge --source membership` (MCP: `set_plan_quota` with `kind: "gauge"`, `source: "membership"`). There is no built-in `users` metric. Ask whether invites go through Bridge's built-in team page or the app's own invite handler. Built-in team page: `<bridge-team-panel seatsMetric="seats" />`, and Invite stops at the limit (see `team-prompt.md`). Own handler: `@RequireQuota('seats')` on it. Bridge's invite API does not refuse at the limit, so one of the two must be in place. Never gate seats with a flag or an entitlement: a seat count is a limit.
 
 ## Prerequisites
 
@@ -147,7 +179,7 @@ const bridgeConfig: BridgeConfig = {
 };
 ```
 
-## Step 3 — Quota and entitlement UI (optional)
+## Step 3 — Plan limits and plan features in the UI (optional)
 
 Skip if the plans have no per-resource limits or feature differences.
 
@@ -157,26 +189,46 @@ To show a live quota counter, drop in `<bridge-quota-banner metric="ai_completio
 
 **Plan limits, lowest level first.** Level 0 needs no page code: with `bridgeInterceptor` provided, a `402 QUOTA_EXCEEDED` from your backend (bridge-nestjs `@RequireQuota`) opens the upgrade dialog. Level 1: `<bridge-quota-gate metric="tickets">` around the button (or `[bridgeQuotaGate]="'tickets'"` on it), and `<bridge-feature-flag key="analytics" [upgrade]="true">` around a paid feature. Level 2: `injectQuota('tickets')` for your own UI. Do not write a quota `if`, a "limit reached" toast, or a `/quota` endpoint.
 
-To gate a feature by entitlement, read `bridge.tenant.entitlements` from `BridgeService`. Its `snapshot` is a signal, so a `computed` over it keeps the template current:
+### Plan features — a flag ruled on the plan's list
 
-```ts
-import { Component, computed, inject } from '@angular/core';
-import { BridgeService } from '@nebulr-group/bridge-angular';
+An on/off feature that some plans sell (analytics, SSO, AI) is two pieces: the plan lists it, and a flag reads that list. The flag's rule never names plans, so when Pro gains or loses the feature you change the plan and no rule has to follow.
 
-@Component({
-  selector: 'app-analytics-link',
-  standalone: true,
-  template: `@if (canAnalytics()) { <a href="/analytics">Open advanced analytics</a> }`,
-})
-export class AnalyticsLinkComponent {
-  private readonly bridge = inject(BridgeService);
-  readonly canAnalytics = computed(
-    () => !!this.bridge.tenant.entitlements.snapshot()?.['advanced_analytics'],
-  );
-}
+1. Put the feature on each plan that sells it: `bridge plan feature add pro analytics --name "Analytics"` (MCP: `add_plan_feature`).
+2. Create the flag with the rule `bridge:billing.entitlement.analytics eq true`:
+
+```bash
+bridge flag create --key analytics --value-type boolean --state on-with-rule \
+  --rule '{"branches":[{"conditions":[{"attribute":"bridge:billing.entitlement.analytics","operator":"eq","values":[true]}],"returnValue":true}],"otherwiseValue":false,"rolloutPct":100}'
 ```
 
-The snapshot is `null` until it loads, so the check is `false` until then (fail-closed), and it is replaced live on every entitlements change (a plan change, or a `hard` quota running out). For a one-off check in an event handler, `this.bridge.tenant.entitlements.can('advanced_analytics')` returns the same answer. Don't store the result of `can()` in a field: it's read once and never updates.
+(MCP: `create_feature_flag` with the same rule as a structured object.)
+
+3. Gate on the flag. Markup:
+
+```ts
+import { Component } from '@angular/core';
+import { FeatureFlagComponent } from '@nebulr-group/bridge-angular';
+
+@Component({
+  selector: 'app-analytics-card',
+  standalone: true,
+  imports: [FeatureFlagComponent],
+  template: `
+    <bridge-feature-flag key="analytics" [defaultValue]="false" [upgrade]="true">
+      <app-analytics-panel />
+    </bridge-feature-flag>
+  `,
+})
+export class AnalyticsCardComponent {}
+```
+
+`[upgrade]="true"` shows an "Upgrade to use this" button in its place when the plan is why it is off; clicking it opens the upgrade dialog naming the plans that include it. For your own prompt, add a `*bridgeFeatureFlagFallback` template instead (`BridgeFeatureFlagFallbackDirective`): its context has `reason` (`'plan'` when an upgrade alone would turn it on) and `openUpgrade()`. A whole page is a route rule: `{ match: '/analytics/*', featureFlag: 'analytics', redirectTo: '/' }`. In code, `bridge.flag('analytics', false)` on the injected `BridgeService`. On the backend, `@RequireFeatureFlag('analytics')` reads the same rule.
+
+A signed-in page already knows the plan's features when it first renders: `provideBridge()` reads them, the billing state and the flag definitions before Angular draws anything (each capped at 1.5 s), so a paying user never sees "Upgrade to use this" flash. After a checkout or a plan change the flag follows on its own.
+
+### Exceptions — checking the plan directly
+
+`*bridgeEntitled="'analytics'"` (`EntitledDirective`) and `bridge.tenant.entitlements.can('analytics')` read the plan's list with no flag in between. Use them only when the developer explicitly asks for no flag; in development `*bridgeEntitled` logs a one-time note pointing at the flag rule. `can()` is fail-closed (`false` until the plan's features have loaded), and `*bridgeEntitled` renders nothing, or its `loading` template, until Bridge has answered.
 
 ## Step 4 — Reporting usage
 
@@ -253,7 +305,7 @@ Plans, prices, quotas, and entitlements are configured at **app.thebridge.dev** 
 ## Standalone vs full-platform
 
 - **Full platform:** billing rides the same `provideBridge()` as auth and flags — the signed-in tenant's plan drives entitlements and quotas automatically.
-- Billing UI assumes the user is authenticated (a tenant must exist to have a subscription). Set up **auth** first — see the auth guide. For feature gating, remember entitlements describe what the user *bought*; **feature flags** (see the flags guide) describe what's *exposed*.
+- Billing UI assumes the user is authenticated (a tenant must exist to have a subscription). Set up **auth** first — see the auth guide. For feature gating, the plan says what was *bought* and a flag ruled on it decides what is *shown* (see *Plan features* in Step 3 and the flags guide).
 
 ## Billing checklist
 
@@ -264,7 +316,9 @@ Before verifying, confirm every item was applied:
 - [ ] No hand-written subscription, success, cancel, `/billing` or `/payment-error` page, and no hand-written portal call or hardcoded portal URL
 - [ ] `<bridge-billing-notice />` added to the root component
 - [ ] Paywall: nothing added unless the developer asked for an onboarding page or a modal (then `billing.paywallRoute` set to match)
-- [ ] Quota/entitlement UI added if plans have limits
+- [ ] Quota UI added if plans have limits
+- [ ] Plan features: on the plan (`bridge plan feature add`) and gated by a flag ruled `bridge:billing.entitlement.<key> eq true` — `<bridge-feature-flag>` or a route rule, never a check of the plan in a component
+- [ ] `npx @nebulr-group/bridge-cli check gates` reports nothing
 - [ ] Every `createSubscriptionSignal`/`createQuotaSignal` is torn down in `ngOnDestroy`
 - [ ] No extra packages installed (`@stripe/stripe-js` must NOT be in package.json)
 

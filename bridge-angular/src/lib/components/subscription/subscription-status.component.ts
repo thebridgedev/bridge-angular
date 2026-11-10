@@ -5,8 +5,13 @@
  * Drop-in component that renders the workspace's current canonical plan name +
  * subscription status. Reads auth-core's billing `useBridge().subscription`
  * surface via a signal (§5.1: svelte `$state(snapshot())` + `onMount(subscribe)`
- * → `createSubscriptionSignal()` + `effect`/teardown). Fetches once on mount via
- * `subscription.mount({ apiBaseUrl, accessToken, appId, onTokenStale })`.
+ * → `createSubscriptionSignal()` + `effect`/teardown).
+ *
+ * TBP-762 — reads through the billing refresh rule (`billing/billing-refresh.ts`):
+ * on mount it reads unless a read younger than 30 s exists, and the store is
+ * re-read on a plan change, a renewed sign-in and tab focus, so the badge
+ * follows the plan without a reload. A re-read keeps the plan on screen; a
+ * failed read is retried once, and "Loading…" stays up meanwhile.
  */
 import {
   Component,
@@ -16,13 +21,13 @@ import {
   computed,
   signal,
 } from '@angular/core';
-import { useBridge, type BillingSubscriptionSnapshot } from '@nebulr-group/bridge-auth-core';
+import { type BillingSubscriptionSnapshot } from '@nebulr-group/bridge-auth-core';
 import { AuthService } from '../../shared/services/auth.service';
 import {
   createSubscriptionSignal,
   type BillingSignal,
 } from '../../core/billing-signals';
-import { tokenStaleHandlerOf } from '../../core/token-stale';
+import { ensureBillingState } from '../../billing/billing-refresh';
 
 @Component({
   selector: 'bridge-subscription-status',
@@ -62,20 +67,9 @@ export class SubscriptionStatusComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this._sub = createSubscriptionSignal();
-    const subscription = useBridge().subscription;
-    const bridge = this.authService.getBridgeAuth();
-    const ctx = bridge.getApiContext();
-    if (!ctx.accessToken) {
-      subscription.setError('Not authenticated');
-      return;
-    }
-    void subscription.mount({
-      apiBaseUrl: ctx.apiBaseUrl,
-      accessToken: ctx.accessToken,
-      appId: ctx.appId,
-      // TBP-762 — a read right after a checkout renews the sign-in and retries.
-      onTokenStale: tokenStaleHandlerOf(bridge),
-    });
+    // Signed out → "Not authenticated"; a read right after a checkout renews
+    // the sign-in and retries.
+    void ensureBillingState(this.authService);
   }
 
   ngOnDestroy(): void {

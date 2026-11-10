@@ -19,7 +19,7 @@ export class NavBarComponent {}
 
 ## What drives it
 
-The component subscribes to the canonical subscription state, the same plan and status that `bridge.tenant.subscription` exposes (see [How billing works](/billing/how-it-works/)). It fetches once on mount and then follows the state, so a plan change or a status flip shows up without a reload. While the first fetch is in flight it shows a loading placeholder; if the workspace has no subscription it renders "No subscription".
+The component subscribes to the canonical subscription state, the same plan and status that `bridge.tenant.subscription` exposes (see [How billing works](/billing/how-it-works/)). It reads on mount (unless a read younger than 30 seconds exists) and then follows the state: it is re-read on a plan or subscription change, when the sign-in is renewed, and when the tab regains focus after 30 seconds, so a plan change in Bridge shows up without a reload. A re-read keeps the current plan on screen. While the first read is in flight it shows a loading placeholder; a failed read is retried once before it says "Subscription unavailable"; if the workspace has no subscription it renders "No subscription".
 
 The badge shows the raw subscription status: `trial`, `active`, `past_due`, `cancel_at_period_end`, or `canceled`.
 

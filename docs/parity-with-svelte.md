@@ -51,6 +51,11 @@ Legend: **present** (already on `main` before TBP-744) · **added** (TBP-744 / t
 | Interval tabs, `defaultInterval`, cheapest-first, feature list | same | added |
 | Free pick goes on to `successRedirect` (TBP-762) | same, unless `(select)` is observed | added |
 | Plan-change confirmation dialog (TBP-33) | same "Change plan?" dialog | added |
+| Plan cards on a surface, formatted price, "Choose / Upgrade to / Switch to", current plan flagged, `heading` (svelte 0.9.2, TBP-813) | same, `heading` input | added (TBP-944) |
+| Current-plan panel with renewal date and card on `/subscription` (TBP-813) | same | added (TBP-944) |
+| `billing.successRoute` (default: the subscription page); a checkout and a Free pick land there (TBP-813) | same | added (TBP-944) |
+| `<BridgeCheckoutNotice>`, `checkoutResult` store, `takeCheckoutResult`, `clearCheckoutResult` (TBP-813) | `<bridge-checkout-notice>` (`contentTemplate`), `checkoutResult` signal, same functions | added (TBP-944) · **different**: a read-only signal instead of a store; the custom text is an `ng-template` instead of a snippet |
+| `<BridgeBillingRoutes checkoutNotice={false}>` | `bridgeBillingRoutes({ checkoutNotice: false })` | added (TBP-944) |
 | `<BridgeSubscriptionStatus>`, `<BridgeBillingNotice>`, `<BridgePaywall>`, `<BridgeQuotaBanner>` | same | present |
 | Level 0: global `fetch` wrapper + `bridgeFetch` → upgrade dialog on `402` | `bridgeInterceptor` (HttpClient) + `bridgeFetch` | added — **different**: Angular apps call APIs through `HttpClient`; an interceptor is the idiom, and it sends the token only to watched origins |
 | `<BridgeUpgradeDialog>`, `billing.upgradeDialog` (`false` / component), `billing.apiOrigins` | `<bridge-upgrade-dialog>`, same options | added |
@@ -70,6 +75,9 @@ Legend: **present** (already on `main` before TBP-744) · **added** (TBP-744 / t
 | bridge-svelte | bridge-angular | Status |
 |---|---|---|
 | `--bridge-*` token contract, defaults on `:where(:root)`, deprecated aliases | same stylesheet contract | added (was plain `:root`, fewer tokens) |
+| `--bridge-card-bg`, `--bridge-card-shadow` (svelte 0.9.2, TBP-813) | same | added (TBP-944) |
+| Text sizes from `--bridge-text-base` (`@property`, from `--bridge-font-size` or the `<body>`), `--bridge-font-weight-heading` / `-button` / `-label`, `--bridge-button-shadow` (svelte 0.9.3, TBP-814) | same | added (TBP-944) |
+| Every style in `@layer bridge`, ordered after Tailwind v4's layers (TBP-814) | same; the stylesheet and the one component with its own styles (`<bridge-login>`); the dev badge stays unlayered as in svelte | added (TBP-944) |
 | Headless without the stylesheet | same | present |
 
 ## Flags, live updates, team, developer
@@ -86,4 +94,4 @@ Legend: **present** (already on `main` before TBP-744) · **added** (TBP-744 / t
 
 ## Tests
 
-Every row marked **added** has vitest coverage in `bridge-angular/src/lib/**/*.spec.ts`: `routing/ten-line-routing.spec.ts`, `guards/ten-line-guard.spec.ts`, `billing/plan-limits.spec.ts`, `config/resolve-config.spec.ts`, `styles-tokens.spec.ts`, `billing/double-count-warning.spec.ts`, and the S2 and confirmation blocks of `components/subscription/plan-selector.component.spec.ts`.
+Every row marked **added** has vitest coverage in `bridge-angular/src/lib/**/*.spec.ts`: `routing/ten-line-routing.spec.ts`, `guards/ten-line-guard.spec.ts`, `billing/plan-limits.spec.ts`, `config/resolve-config.spec.ts`, `styles-tokens.spec.ts`, `billing/double-count-warning.spec.ts`, and the S2 and confirmation blocks of `components/subscription/plan-selector.component.spec.ts`. The TBP-944 rows: `styles-layer.spec.ts`, `billing/checkout-result.spec.ts`, `components/subscription/plan-format.spec.ts`, `components/subscription/checkout-notice.component.spec.ts`, the default-card block of `plan-selector.component.spec.ts`, and the billing-destination and callback blocks of `routing/ten-line-routing.spec.ts`.

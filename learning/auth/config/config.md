@@ -130,6 +130,7 @@ Set `loginRoute: '/auth/login'` and `bridgeAuthGuard()` sends unauthenticated us
 | `billing.paywallRoute` | `string \| false` | `'/subscription/plan'` | Where a workspace (called a *tenant* in the API) with no plan is redirected. The default applies only to an app with plans; `false` turns the redirect off |
 | `billing.paymentErrorRoute` | `string` | `'/subscription/error'` | Where a failed Stripe checkout confirmation lands |
 | `billing.manageRoute` | `string` | `'/subscription'` | The subscription page — where Upgrade/Manage buttons and the upgrade dialog link |
+| `billing.successRoute` | `string` | `billing.manageRoute` | Where a completed checkout or a Free plan pick lands. The subscription page shows a confirmation banner; on any other page, render `<bridge-checkout-notice />` for it |
 | `billing.upgradeDialog` | `boolean \| Type` | `true` | The dialog shown on a plan-limit `402`. `false` turns it off; a standalone component replaces it and receives `BridgeUpgradeDialogInputs` |
 | `billing.apiOrigins` | `string[]` | (none) | Origins of your own backend when it is not the page's origin; `bridgeInterceptor` sends the user's token to, and reads plan-limit refusals from, these |
 | `locale` | `string` | `'en'` | UI language for the SDK auth components, e.g. `'sv'`. Region variants (`'sv-SE'`) resolve to their base language; an unknown locale falls back to English |

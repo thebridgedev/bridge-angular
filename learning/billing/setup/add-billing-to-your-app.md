@@ -77,7 +77,9 @@ export const appConfig: ApplicationConfig = {
   wherever your `<bridge-plan-selector>` lives. (Workspaces that opt out via
   `paymentsAutoRedirect: false` are exempt.)
 - **`paymentErrorRoute`**: where Bridge sends the user if a Stripe checkout
-  confirmation fails on the return trip. Defaults to `/payment-error`.
+  confirmation fails on the return trip. Defaults to `/subscription/error`.
+- **`successRoute`**: where a completed checkout, or a Free plan pick, lands.
+  Defaults to the subscription page; see [Where a checkout lands](#where-a-checkout-lands).
 
 Both are optional. Leave `paywallRoute` unset if you'd rather gate the app with
 `<bridge-paywall>` (below) than redirect.
@@ -88,6 +90,48 @@ Both are optional. Leave `paywallRoute` unset if you'd rather gate the app with
 > The Stripe return trip runs through your `/auth/oauth-callback` route, which
 > confirms the checkout session before landing on your redirect target; see
 > [Require a plan to use the app](/billing/onboarding/require-plan/).
+
+### Where a checkout lands
+
+After a paid checkout, or a Free plan pick, the user comes back to the
+subscription page `bridgeBillingRoutes()` serves, which shows a "You're on Pro
+now" banner. There is no separate confirmation step. To send them somewhere
+else, set `billing.successRoute` in `provideBridge()`:
+
+```ts
+provideBridge({ appId: environment.bridgeAppId, billing: { successRoute: '/dashboard' } }),
+```
+
+To show the same banner there, put `<bridge-checkout-notice />` on that page or
+in your app shell (import `CheckoutNoticeComponent`). It renders nothing until a
+checkout has just completed, shows once, and is gone after a reload. For a
+message of your own, read the `checkoutResult` signal instead:
+
+```ts
+import { Component } from '@angular/core';
+import { checkoutResult, clearCheckoutResult } from '@nebulr-group/bridge-angular';
+
+@Component({
+  selector: 'app-thanks',
+  standalone: true,
+  template: `
+    @if (result()) {
+      <p>Thanks for upgrading! <button (click)="dismiss()">OK</button></p>
+    }
+  `,
+})
+export class ThanksComponent {
+  protected readonly result = checkoutResult;
+  protected dismiss() {
+    clearCheckoutResult();
+  }
+}
+```
+
+`checkoutResult()?.kind` is `'checkout'` after a paid checkout and `'plan'` after
+a Free pick. The old confirmation page is still served: `successRoute:
+'/subscription/success'` brings it back. `bridgeBillingRoutes({ checkoutNotice: false })`
+hides the banner on the subscription page.
 
 ## Adding billing to your UI
 
@@ -131,7 +175,7 @@ import { PlanSelectorComponent } from '@nebulr-group/bridge-angular';
   standalone: true,
   imports: [PlanSelectorComponent],
   template: `
-    <bridge-plan-selector successRedirect="/subscription/success" cancelRedirect="/subscription" />
+    <bridge-plan-selector successRedirect="/subscription" cancelRedirect="/subscription" />
   `,
 })
 export class SubscriptionComponent {}

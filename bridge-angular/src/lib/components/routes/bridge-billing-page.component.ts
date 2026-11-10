@@ -1,16 +1,26 @@
 /**
  * TBP-744 — the component every `bridgeBillingRoutes()` page renders. Angular
  * port of bridge-svelte's `<BridgeBillingRoutes>` body:
- *   manage   the current plan, "Manage billing" and the plan picker
+ *   manage   the current plan, "Manage billing" and the plan picker; a
+ *            completed checkout lands here, with a banner
  *   plan     the paywall: where a plan-less workspace is sent
- *   success  where a completed checkout (or a Free pick) lands
+ *   success  the old confirmation page, for `billing.successRoute`
  *   error    where a failed checkout confirmation lands
  *
- * Not normally used directly — spread `bridgeBillingRoutes()` into the router.
+ * TBP-944 (svelte TBP-813) — a paid checkout and a Free pick land on
+ * `billing.successRoute`, by default these routes' own subscription page, which
+ * shows `<bridge-checkout-notice>`. The current plan sits in a panel with its
+ * renewal date and card, above the plan picker.
+ *
+ * Not normally used directly: spread `bridgeBillingRoutes()` into the router.
  */
-import { Component, OnInit, inject } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
-import type { BridgeBillingPage } from '../../routing/billing-paths';
+import type { BillingSubscriptionSnapshot } from '@nebulr-group/bridge-auth-core';
+import { clearCheckoutResult } from '../../billing/checkout-result';
+import { BridgeConfigService } from '../../config/bridge-config.service';
+import { createSubscriptionSignal, type BillingSignal } from '../../core/billing-signals';
+import { resolveBillingPaths, type BridgeBillingPage } from '../../routing/billing-paths';
 import {
   BRIDGE_BILLING_PAGE_DATA,
   BRIDGE_PAGE_OPTIONS_DATA,
@@ -19,6 +29,8 @@ import {
 import { routeSegments } from '../../routing/route-path';
 import { AuthService } from '../../shared/services/auth.service';
 import { BillingPortalButtonComponent } from '../subscription/billing-portal-button.component';
+import { CheckoutNoticeComponent } from '../subscription/checkout-notice.component';
+import { subscriptionMeta } from '../subscription/plan-format';
 import { PlanSelectorComponent } from '../subscription/plan-selector.component';
 import { SubscriptionStatusComponent } from '../subscription/subscription-status.component';
 
@@ -32,22 +44,31 @@ const DEFAULT_HEADINGS: Record<BridgeBillingPage, string> = {
 @Component({
   selector: 'bridge-billing-page',
   standalone: true,
-  imports: [BillingPortalButtonComponent, PlanSelectorComponent, SubscriptionStatusComponent],
+  imports: [BillingPortalButtonComponent, CheckoutNoticeComponent, PlanSelectorComponent, SubscriptionStatusComponent],
   template: `
     <div class="bridge-billing-page" [attr.data-bridge-billing-route]="page">
+      @if (page === 'manage' && options.checkoutNotice !== false) {
+        <bridge-checkout-notice />
+      }
       <h1 class="bridge-billing-heading">{{ heading }}</h1>
       @switch (page) {
         @case ('manage') {
-          <div class="bridge-billing-current">
-            <span class="bridge-billing-label">Current plan</span>
-            <bridge-subscription-status />
+          <p class="bridge-billing-text">Your plan, what it includes, and billing.</p>
+          <div class="bridge-billing-summary" data-bridge-billing-summary>
+            <div class="bridge-billing-summary-plan">
+              <span class="bridge-billing-label">Current plan</span>
+              <bridge-subscription-status className="bridge-billing-summary-status" />
+              @if (meta()) {
+                <span class="bridge-billing-summary-meta" data-bridge-billing-meta>{{ meta() }}</span>
+              }
+            </div>
             <bridge-billing-portal-button />
           </div>
-          <bridge-plan-selector [successRedirect]="at('success')" [cancelRedirect]="base" />
+          <bridge-plan-selector heading="Change plan" [successRedirect]="successTarget" [cancelRedirect]="base" />
         }
         @case ('plan') {
           <p class="bridge-billing-text">Pick a plan to start using the app.</p>
-          <bridge-plan-selector [successRedirect]="at('success')" [cancelRedirect]="at('plan')" />
+          <bridge-plan-selector [successRedirect]="successTarget" [cancelRedirect]="at('plan')" />
         }
         @case ('success') {
           <p class="bridge-billing-text">Your plan is active.</p>
@@ -68,9 +89,10 @@ const DEFAULT_HEADINGS: Record<BridgeBillingPage, string> = {
     </div>
   `,
 })
-export class BridgeBillingPageComponent implements OnInit {
+export class BridgeBillingPageComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly auth = inject(AuthService);
+  private readonly config = inject(BridgeConfigService, { optional: true });
 
   protected readonly page: BridgeBillingPage = this.route.snapshot.data[BRIDGE_BILLING_PAGE_DATA] ?? 'manage';
   protected readonly options: BridgePageOptions = this.route.snapshot.data[BRIDGE_PAGE_OPTIONS_DATA] ?? {
@@ -90,6 +112,30 @@ export class BridgeBillingPageComponent implements OnInit {
     return this.base === '/' ? `/${sub}` : `${this.base}/${sub}`;
   }
 
+  /**
+   * TBP-944 — where a checkout or a Free pick lands: `billing.successRoute`, by
+   * default this set's own subscription page, wherever the routes live.
+   */
+  protected readonly successTarget = (() => {
+    let paths;
+    try {
+      paths = resolveBillingPaths(this.config?.getConfig().billing);
+    } catch {
+      paths = resolveBillingPaths(undefined);
+    }
+    return paths.successIsDefault ? this.base : paths.successRoute;
+  })();
+
+  /** The current plan's renewal date and card, for the line under its name. */
+  private readonly billing: BillingSignal<BillingSubscriptionSnapshot> | null = (() => {
+    try {
+      return createSubscriptionSignal();
+    } catch {
+      return null; // Bridge not initialised: no meta line
+    }
+  })();
+  protected readonly meta = computed(() => subscriptionMeta(this.billing?.value().state));
+
   ngOnInit(): void {
     // The success page always re-reads: the checkout just changed the plan.
     // The others read unless something already loaded it.
@@ -97,5 +143,11 @@ export class BridgeBillingPageComponent implements OnInit {
     if (this.page === 'success' || (!status && !loading)) {
       void this.auth.loadSubscription();
     }
+    // The old confirmation page says it all; no banner on the next page too.
+    if (this.page === 'success') clearCheckoutResult();
+  }
+
+  ngOnDestroy(): void {
+    this.billing?.destroy();
   }
 }

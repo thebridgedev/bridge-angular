@@ -45,6 +45,7 @@ import {
 } from '@angular/core';
 import {
   RealtimeClient,
+  type FlagChange,
   type QuotaSnapshot,
   type RealtimeClientConfig,
   type RealtimeStatus,
@@ -70,6 +71,7 @@ import { _setRealtimeStatus, _setRealtimeStatusDetail } from './realtime-status'
 import { setPlansLoader } from './dev-attributes';
 import { notifyAllFlagsChanged } from '../flags/registry';
 import { tokenStaleHandlerOf } from './token-stale';
+import { billingEventReceived } from '../billing/billing-refresh';
 import {
   clearPendingAuthorizationChange,
   pendingAuthorizationChange,
@@ -137,6 +139,9 @@ export class BridgeRuntimeService {
   private readonly _onOpenSubs = new Set<() => void>();
   private readonly _onCloseSubs = new Set<() => void>();
   private readonly _onSnapshotSubs = new Set<(msg: SessionSnapshotMessage) => void>();
+  // TBP-575 — flag mutations received on the wire, fanned out so the bootstrap
+  // can re-check the page the user is on when a flag its route rule names moves.
+  private readonly _onFlagChangeSubs = new Set<(change: FlagChange) => void>();
   private readonly _onUserStateSubs = new Set<(event: { reason: string }) => void>();
   private readonly _onTokensSubs = new Set<(accessToken: string | undefined) => void>();
   // TBP-644 — full realtime status (state + reason + whose side + retrying).
@@ -276,6 +281,21 @@ export class BridgeRuntimeService {
       }
     });
 
+    // TBP-575 — a flag changed on the wire. auth-core has already applied it to
+    // the FF 2.0 cache (what the route guard evaluates). The legacy
+    // FeatureFlagService cache an app can still reach is cleared, and
+    // subscribers hear about it: a route flag is a live kill switch only if
+    // the page it gates is re-checked while the user is on it. Guarded: an
+    // older auth-core has no such hook.
+    this._realtime.setOnFlagChange?.((change) => {
+      try {
+        this.authService.getBridgeAuth().invalidateFeatureFlagCache();
+      } catch {
+        /* BridgeAuth not initialised yet — nothing cached */
+      }
+      this.emitFlagChange(change);
+    });
+
     this._realtime.setOnSnapshot((msg) => {
       try {
         applySessionSnapshot(msg.data);
@@ -338,26 +358,34 @@ export class BridgeRuntimeService {
     // signal is patched BEFORE dispatch so a `bridge.events` handler that reads
     // `bridge.tenant.subscription()` already sees the new plan. Lifecycle events
     // are deliberately not mirrored: their payloads carry no status.
+    //
+    // TBP-762 — every billing event also goes through the billing refresh
+    // rule, which re-reads the plan list, the billing state and the plan's
+    // features for the events that change them (`BILLING_REFRESH_EVENTS`).
+    const billing = (msg: { kind: string }) => {
+      billingEventReceived(msg.kind, this.authService);
+      bridgeEvents._dispatch(msg as Parameters<typeof bridgeEvents._dispatch>[0]);
+    };
     useBridge().handle({
       'subscription.plan_changed': (msg) => {
         try { applySubscriptionPlanChanged(msg); } catch { /* signal updates shouldn't throw, defensive */ }
         this.authorizationChanged('subscription.plan_changed');
-        bridgeEvents._dispatch(msg);
+        billing(msg);
       },
-      'payment.failed': (msg) => bridgeEvents._dispatch(msg),
-      'payment.succeeded': (msg) => bridgeEvents._dispatch(msg),
-      'subscription.created': (msg) => bridgeEvents._dispatch(msg),
-      'subscription.updated': (msg) => bridgeEvents._dispatch(msg),
-      'subscription.canceled': (msg) => bridgeEvents._dispatch(msg),
-      'subscription.reactivated': (msg) => bridgeEvents._dispatch(msg),
-      'subscription.trial_started': (msg) => bridgeEvents._dispatch(msg),
-      'subscription.trial_ending_soon': (msg) => bridgeEvents._dispatch(msg),
-      'subscription.trial_converted': (msg) => bridgeEvents._dispatch(msg),
-      'subscription.trial_expired': (msg) => bridgeEvents._dispatch(msg),
-      'dunning.entered': (msg) => bridgeEvents._dispatch(msg),
-      'dunning.retry_scheduled': (msg) => bridgeEvents._dispatch(msg),
-      'dunning.recovered': (msg) => bridgeEvents._dispatch(msg),
-      'dunning.exhausted': (msg) => bridgeEvents._dispatch(msg),
+      'payment.failed': billing,
+      'payment.succeeded': billing,
+      'subscription.created': billing,
+      'subscription.updated': billing,
+      'subscription.canceled': billing,
+      'subscription.reactivated': billing,
+      'subscription.trial_started': billing,
+      'subscription.trial_ending_soon': billing,
+      'subscription.trial_converted': billing,
+      'subscription.trial_expired': billing,
+      'dunning.entered': billing,
+      'dunning.retry_scheduled': billing,
+      'dunning.recovered': billing,
+      'dunning.exhausted': billing,
       'quota.updated': (msg) => bridgeEvents._dispatch(msg),
       'entitlements.changed': (msg) => {
         // Only the payload-carrying variant has a map; the signal-only one is a no-op here.
@@ -897,6 +925,28 @@ export class BridgeRuntimeService {
   onAuthorizationChange(handler: (reason: BridgeAuthorizationChangeReason) => void): () => void {
     this._onAuthorizationChangeSubs.add(handler);
     return () => this._onAuthorizationChangeSubs.delete(handler);
+  }
+
+  /**
+   * Subscribe to flag mutations received on the wire (TBP-575), and to flags
+   * whose definition changed across a reconnect (reported by the flags layer
+   * through {@link emitFlagChange}). The FF 2.0 cache already holds the new
+   * definition when subscribers run. Returns an unsubscribe fn.
+   */
+  onFlagChange(handler: (change: FlagChange) => void): () => void {
+    this._onFlagChangeSubs.add(handler);
+    return () => this._onFlagChangeSubs.delete(handler);
+  }
+
+  /** Fan a flag change out to {@link onFlagChange} subscribers. Never throws. */
+  emitFlagChange(change: FlagChange): void {
+    for (const fn of this._onFlagChangeSubs) {
+      try {
+        fn(change);
+      } catch {
+        /* subscriber errors swallowed */
+      }
+    }
   }
 
   /** Subscribe to `user.state_changed` signals. Returns an unsubscribe fn. */

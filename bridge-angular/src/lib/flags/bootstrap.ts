@@ -110,6 +110,13 @@ export interface CreateBridgeFlagsConfig {
   registerGlobal?: boolean;
   /** Optional extra hooks chained on top of telemetry + reactivity hooks. */
   hooks?: BridgeFlagsHooks;
+  /**
+   * TBP-575 — called after a re-read of the flag definitions (the re-hydrate
+   * on every realtime reconnect) with the keys whose definition changed. A
+   * flag switched off while the connection was down has no live push; this is
+   * how the route guard still hears about it. Not called for the first read.
+   */
+  onDefinitionsChanged?: (keys: string[]) => void;
 }
 
 export interface BridgeFlagsBundle {
@@ -124,7 +131,13 @@ export interface BridgeFlagsBundle {
    * equivalent of svelte's `tokenStore.subscribe` inside the bootstrap.
    */
   applyAuthContext: (accessToken: string | undefined) => void;
-  /** Stop telemetry. Idempotent. */
+  /**
+   * TBP-810 — settles once the first read of the flag definitions has finished
+   * (loaded or failed). Never rejects. The app initializer waits for it,
+   * capped, before the first render.
+   */
+  definitionsLoaded: Promise<void>;
+  /** Stop telemetry and the billing-store subscriptions. Idempotent. */
   stop: () => Promise<void>;
 }
 
@@ -219,6 +232,29 @@ export function createBridgeFlags(config: CreateBridgeFlagsConfig): BridgeFlagsB
   // Compose hooks: telemetry (baseline) + reactivity (eval-driven bumps) + user.
   attachWithCompositeHooks(bridge, telemetry, config.hooks ?? {});
 
+  // TBP-575 — the definitions last read, by key, so a re-read can say which
+  // flags changed while the realtime connection was down.
+  let lastDefinitions: Map<string, string> | null = null;
+  const noteDefinitions = (flags: ReadonlyArray<{ key?: unknown }>): void => {
+    const next = new Map<string, string>();
+    for (const f of flags) {
+      if (typeof f?.key === 'string') next.set(f.key, safeJson(f));
+    }
+    const previous = lastDefinitions;
+    lastDefinitions = next;
+    if (!previous || !config.onDefinitionsChanged) return;
+    const changed = new Set<string>();
+    for (const [key, json] of next) if (previous.get(key) !== json) changed.add(key);
+    for (const key of previous.keys()) if (!next.has(key)) changed.add(key);
+    if (changed.size > 0) {
+      try {
+        config.onDefinitionsChanged([...changed]);
+      } catch {
+        /* subscriber errors swallowed */
+      }
+    }
+  };
+
   // Hydrate the flag cache so the first `bridge.flag()` returns the right value.
   const hydrateFlagsCache = async (): Promise<void> => {
     try {
@@ -231,6 +267,7 @@ export function createBridgeFlags(config: CreateBridgeFlagsConfig): BridgeFlagsB
       const flags = (await res.json()) as unknown;
       if (Array.isArray(flags) && flags.length > 0) {
         bridge.hydrate(flags as Parameters<typeof bridge.hydrate>[0]);
+        noteDefinitions(flags as Array<{ key?: unknown }>);
       }
     } catch {
       // Hydration is best-effort.
@@ -243,7 +280,35 @@ export function createBridgeFlags(config: CreateBridgeFlagsConfig): BridgeFlagsB
   });
 
   // Initial hydrate — covers the realtime-disabled case where onOpen never fires.
-  void hydrateFlagsCache();
+  // TBP-810 — kept, so the first render can wait for it (bounded).
+  const definitionsLoaded = hydrateFlagsCache();
+
+  // TBP-810 (svelte / react TBP-941) — the billing provider reads these stores
+  // at eval time, so a mounted `<bridge-feature-flag>` / `flagSignal()` only
+  // sees a change if something re-evaluates after the store moved: the plan's
+  // features arriving after sign-in, a workspace switch, a checkout, a quota
+  // reaching its limit. One re-eval per burst: plan, entitlements and quota
+  // updates land together.
+  let billingReevalQueued = false;
+  const onBillingStoreChange = (): void => {
+    if (billingReevalQueued) return;
+    billingReevalQueued = true;
+    queueMicrotask(() => {
+      billingReevalQueued = false;
+      notifyAllFlagsChanged();
+    });
+  };
+  const unsubscribeBilling: Array<() => void> = [];
+  try {
+    const billing = useBridge();
+    unsubscribeBilling.push(
+      billing.subscription.subscribe(onBillingStoreChange),
+      billing.quotas.subscribe(onBillingStoreChange),
+      billing.entitlementsStore.subscribe(onBillingStoreChange),
+    );
+  } catch {
+    // No billing bridge — nothing to follow.
+  }
 
   if (config.registerGlobal !== false) {
     setBridgeFlagsInstance(bridge);
@@ -270,6 +335,7 @@ export function createBridgeFlags(config: CreateBridgeFlagsConfig): BridgeFlagsB
 
   const stop = async (): Promise<void> => {
     unsubscribeOpen?.();
+    for (const off of unsubscribeBilling.splice(0)) off();
     await telemetry.stop();
   };
 
@@ -282,6 +348,7 @@ export function createBridgeFlags(config: CreateBridgeFlagsConfig): BridgeFlagsB
     authAttributeProvider,
     billingAttributeProvider,
     applyAuthContext,
+    definitionsLoaded,
     stop,
   };
 }
@@ -289,6 +356,14 @@ export function createBridgeFlags(config: CreateBridgeFlagsConfig): BridgeFlagsB
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 const _BUMP_SENTINEL = Symbol('bridge.flags.bump');
+
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(Math.random());
+  }
+}
 
 /**
  * Telemetry's `attach` calls `bridge.setHooks` and overwrites whatever was

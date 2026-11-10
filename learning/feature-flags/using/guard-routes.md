@@ -59,6 +59,12 @@ cache the rest of the SDK uses. It's independent of the in-component
 cache internally, so no extra setup is needed: declare the rule and the guard
 redirects when the flag is off.
 
+A route flag is also a live kill switch. When a flag a route's rule names
+changes while someone is on that page, the page is re-checked and they land on
+the rule's `redirectTo` within about a second, with no click or reload. The
+same happens when the plan, the plan's features or the session change. A flag
+that changed while live updates were down is picked up when they reconnect.
+
 When a flag turns a route away, the redirect says why. The page it lands on
 reads it from the navigation state under `BRIDGE_RESTRICTION_STATE_KEY`:
 

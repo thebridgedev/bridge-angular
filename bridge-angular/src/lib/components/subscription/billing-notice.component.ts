@@ -22,7 +22,6 @@ import {
 import {
   deriveNoticeState,
   deriveSeverity,
-  useBridge,
   type BillingNoticeState,
   type BillingSubscriptionSnapshot,
   type BillingSubscriptionState,
@@ -34,7 +33,7 @@ import {
   type BillingSignal,
 } from '../../core/billing-signals';
 import { BRIDGE_BILLING_DEFAULTS } from '../../routing/billing-paths';
-import { tokenStaleHandlerOf } from '../../core/token-stale';
+import { ensureBillingState } from '../../billing/billing-refresh';
 
 type Chassis = 'bar' | 'rail' | 'card';
 
@@ -130,23 +129,14 @@ export class BillingNoticeComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this._sub = createSubscriptionSignal();
-    const subscription = useBridge().subscription;
     const bridge = this.authService.getBridgeAuth();
     const ctx = bridge.getApiContext();
     if (ctx.accessToken) this.isBillingAdmin.set(bridge.canManageBilling());
-    if (!ctx.accessToken) {
-      subscription.setError('Not authenticated');
-      return;
-    }
-    if (!subscription.snapshot().state) {
-      void subscription.mount({
-        apiBaseUrl: ctx.apiBaseUrl,
-        accessToken: ctx.accessToken,
-        appId: ctx.appId,
-        // TBP-762 — a read right after a checkout renews the sign-in and retries.
-        onTokenStale: tokenStaleHandlerOf(bridge),
-      });
-    }
+    // TBP-762 — read through the billing refresh rule: unless a read younger
+    // than 30 s exists, and again on plan changes, renewed sign-ins and tab
+    // focus. Signed out → "Not authenticated"; a read right after a checkout
+    // renews the sign-in and retries.
+    void ensureBillingState(this.authService);
   }
 
   ngOnDestroy(): void {

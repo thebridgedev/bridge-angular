@@ -38,6 +38,12 @@ class StubAuthService {
   async loadSubscription(): Promise<void> {
     /* no-op: state is pre-seeded */
   }
+  async ensureSubscription(): Promise<void> {
+    /* state is pre-seeded */
+  }
+  subscriptionWanted(): boolean {
+    return false;
+  }
   getBridgeAuth(): unknown {
     return {};
   }

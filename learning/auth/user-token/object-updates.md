@@ -6,17 +6,19 @@ Once `provideBridge()` connects, your app is subscribed to a live channel (a per
 
 ```typescript
 import { Component, inject } from '@angular/core';
-import { BridgeService } from '@nebulr-group/bridge-angular';
+import { BridgeService, FeatureFlagComponent, BridgeFeatureFlagFallbackDirective } from '@nebulr-group/bridge-angular';
 
 @Component({
   selector: 'app-admin-gate',
   standalone: true,
+  imports: [FeatureFlagComponent, BridgeFeatureFlagFallbackDirective],
   template: `
-    @if (bridge.user()?.role === 'ADMIN') {
+    <p>Signed in as {{ bridge.user()?.role }}</p>
+    <!-- Flag rule: privileges contains "USER_MANAGE" -->
+    <bridge-feature-flag key="admin_panel" [defaultValue]="false">
       <app-admin-panel />
-    } @else {
-      <p>You don't have access to this area.</p>
-    }
+      <p *bridgeFeatureFlagFallback>You don't have access to this area.</p>
+    </bridge-feature-flag>
   `,
 })
 export class AdminGateComponent {
@@ -24,7 +26,7 @@ export class AdminGateComponent {
 }
 ```
 
-If an admin changes this user's role from `MEMBER` to `ADMIN` in Control Center (your admin dashboard at app.thebridge.dev), `bridge.user().role` updates on its own and `<app-admin-panel>` appears without a refresh, because the template is driven by the reactive `bridge.user` signal rather than a value read once on init. Structure your gated UI this way (branch on the live signal, not a snapshot you captured earlier) and it stays correct automatically.
+If an admin changes this user's role from `MEMBER` to `ADMIN` in Control Center (your admin dashboard at app.thebridge.dev), `bridge.user().role` updates on its own and, when the new role grants `USER_MANAGE`, `<app-admin-panel>` appears without a refresh, because the flag re-evaluates on the refreshed session rather than on a value read once on init. Structure your gated UI this way (a flag, read live, not a snapshot you captured earlier) and it stays correct automatically.
 
 ## Reacting to the exact moment something changes
 

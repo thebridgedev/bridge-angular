@@ -41,6 +41,12 @@ class StubAuthService {
   async loadSubscription(): Promise<void> {
     /* state is pre-seeded */
   }
+  async ensureSubscription(): Promise<void> {
+    /* state is pre-seeded */
+  }
+  subscriptionWanted(): boolean {
+    return false;
+  }
 }
 
 @Component({

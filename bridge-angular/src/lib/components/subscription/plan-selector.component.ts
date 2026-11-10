@@ -146,7 +146,12 @@ type UiState =
           </div>
         }
       } @else if (storeError()) {
-        <div class="bridge-alert bridge-alert-error" role="alert">{{ storeError() }}</div>
+        <div class="bridge-plan-error" data-bridge-plan-error>
+          <div class="bridge-alert bridge-alert-error" role="alert">{{ storeError() }}</div>
+          <button type="button" class="bridge-btn-primary" data-bridge-plan-retry [disabled]="retrying()" (click)="retryPlans()">
+            {{ retrying() ? 'Loading…' : 'Try again' }}
+          </button>
+        </div>
       } @else {
         @if (pickError()) {
           <div class="bridge-alert bridge-alert-error" role="alert">{{ pickError() }}</div>
@@ -177,7 +182,14 @@ type UiState =
           @if (emptyStateTemplate) {
             <ng-container [ngTemplateOutlet]="emptyStateTemplate"></ng-container>
           } @else {
-            <p class="bridge-plan-empty">No plans available.</p>
+            <!-- TBP-762 — an empty list is not proof the app has none (the
+                 store has already asked twice): offer a retry. -->
+            <div class="bridge-plan-empty" data-bridge-plan-empty>
+              <p>The plans could not be loaded.</p>
+              <button type="button" class="bridge-btn-primary" data-bridge-plan-retry [disabled]="retrying()" (click)="retryPlans()">
+                {{ retrying() ? 'Loading…' : 'Try again' }}
+              </button>
+            </div>
           }
         } @else if (plans()) {
           <ng-template #intervalTabs>
@@ -379,7 +391,7 @@ export class PlanSelectorComponent implements OnInit {
   /**
    * Optional custom empty-state template (parity with svelte's `emptyState`
    * snippet). Rendered when the plan list is empty. No context. Falls back to
-   * the default "No plans available." message.
+   * "The plans could not be loaded." with a Try again button (TBP-762).
    */
   @Input() emptyStateTemplate?: TemplateRef<unknown>;
   /**
@@ -492,8 +504,19 @@ export class PlanSelectorComponent implements OnInit {
   );
 
   ngOnInit(): void {
-    if (!this.status() && !this.loading()) {
-      void this.authService.loadSubscription();
+    // TBP-762 — read unless the store holds a read younger than 30 s; the
+    // store re-reads on plan changes, renewed sign-ins and tab focus.
+    void this.authService.ensureSubscription();
+  }
+
+  // TBP-762 — the retry an empty or failed plan list offers.
+  protected readonly retrying = signal(false);
+  protected async retryPlans(): Promise<void> {
+    this.retrying.set(true);
+    try {
+      await this.authService.loadSubscription();
+    } finally {
+      this.retrying.set(false);
     }
   }
 

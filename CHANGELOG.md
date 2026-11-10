@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.1] - 2026-11-10
+
+### Fixed
+
+- **Paid features are unlocked on the first paint.** A signed-in page now reads the plan's features, the billing state and the flag definitions before Angular renders it (each read capped at 1.5 seconds), so a paying user no longer sees "Upgrade to use this" flash on a plan-gated feature. Flags also re-check when the plan, its features or a plan limit change, so a feature unlocks straight after an upgrade and locks after a downgrade, with no reload.
+- **Billing screens stay current.** The plan picker, the subscription badge and the billing notice re-read when the sign-in renews, when a plan or subscription changes in Bridge, and when the tab regains focus after 30 seconds. A plan added or changed in Bridge shows without a reload, and the current plan stays on screen while it re-reads. A plan list that comes back empty or fails to load now offers **Try again** instead of "No plans available."
+- **A flag on a route is a live kill switch.** Switching off the flag a route rule names now moves someone already on that page to the rule's `redirectTo` within about a second, without a click. A flag that changed while live updates were down is picked up when they reconnect.
+
+### Changed
+
+- **Guides follow "every gate is a flag".** The billing and feature-flags guides open with the rule and end with `npx @nebulr-group/bridge-cli check gates`. A paid feature is taught as a flag ruled on the plan's feature, with direct plan checks kept as the exception. The guides name the MCP tools next to the CLI commands, the team guide teaches seat limits with `seatsMetric`, and the live-updates page explains each status reason and links the troubleshooting page.
+- **The guides are checked against the package.** A test now fails if a guide imports, renders or configures something the package does not have.
+
 ## [0.9.0] - 2026-11-10
 
 ### Changed

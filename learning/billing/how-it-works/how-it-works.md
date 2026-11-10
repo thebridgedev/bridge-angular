@@ -110,33 +110,26 @@ export class PlanLinkComponent {
 }
 ```
 
-**Read an entitlement** to gate a feature on what the plan grants. In markup, read the reactive snapshot signal so the gate re-evaluates when entitlements change:
+**Gate a feature the plan sells with a flag.** List the feature on the plans that sell it (`bridge plan feature add pro ai_completions`) and rule a flag `bridge:billing.entitlement.ai_completions eq true`; the page asks the flag, and it re-evaluates live when the plan changes:
 
 ```ts
 import { Component } from '@angular/core';
-import { BridgeService } from '@nebulr-group/bridge-angular';
+import { FeatureFlagComponent } from '@nebulr-group/bridge-angular';
 
 @Component({
   selector: 'app-ai-section',
   standalone: true,
+  imports: [FeatureFlagComponent],
   template: `
-    @if (entitlements()?.['ai_completions']) {
+    <bridge-feature-flag key="use_ai" [defaultValue]="false" [upgrade]="true">
       <app-ai-panel />
-    }
+    </bridge-feature-flag>
   `,
 })
-export class AiSectionComponent {
-  protected readonly entitlements = this.bridge.tenant.entitlements.snapshot;
-
-  constructor(private bridge: BridgeService) {}
-}
+export class AiSectionComponent {}
 ```
 
-For imperative checks outside markup (event handlers, resolvers), `can()` is the synchronous read. It is fail-closed (`false` until the snapshot lands) and **not reactive**, so don't call it directly in an `@if` block; the block would never re-render when entitlements change:
-
-```ts
-if (this.bridge.tenant.entitlements.can('ai_completions')) { /* ... */ }
-```
+A signed-in page already knows the plan's features on its first render: `provideBridge()` reads them before Angular draws the page (capped at 1.5 s), so a paying workspace never sees the feature flash locked. See [Lock features to a plan](/billing/limits/lock-features/) for the whole pattern. **Read quota numbers** with [`injectQuota(metric)`](/billing/limits/usage-limits/).
 
 **For UI, prefer a drop-in component** over wiring your own; each reads the same live state:
 

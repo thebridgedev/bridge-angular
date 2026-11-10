@@ -45,6 +45,15 @@ export class TeamPageComponent {}
 
 Three tabs: **Users** (list, invite, re-role, remove), **Profile**, **Workspace**.
 
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `defaultTab` | `'users' \| 'profile' \| 'workspace'` | `'users'` | Which tab is active first |
+| `showProfileTab` | `boolean` | `true` | Show the Profile tab |
+| `showWorkspaceTab` | `boolean` | `true` | Show the Workspace tab |
+| `seatsMetric` | `string` | — | The plan limit that counts seats, e.g. `"seats"`. With it, Invite stops at the plan's limit and says why. See **Seat limits** below |
+| `className`, `style` | `string` | `''` | Applied to the panel's root |
+| `(error)` | `EventEmitter<Error>` | — | Emitted on any error |
+
 ### A custom tab bar
 
 `TeamTabBarDirective` (`[bridgeTeamTabBar]`) lets you replace the tab bar without giving up the panel — use it as a structural template rather than forking the component.
@@ -62,6 +71,24 @@ Use these when the panel's layout genuinely does not fit. They are what the pane
 | `TeamWorkspaceFormComponent` | Workspace settings |
 
 > This panel **replaced** a legacy iframe/handover `TeamManagementComponent`. If you find a guide or an older app embedding team management in an iframe, that is the superseded approach — do not copy it.
+
+## Seat limits — when a plan sells seats
+
+Seats are a plan limit the app names, `seats` here, like any other limit. It is a gauge that Bridge counts from workspace membership: the active members plus pending invites, read fresh however members are added or removed. There is no built-in `users` metric and no seat logic in Bridge. A seat count is a number, so it is a plan limit; never gate seats with a flag or an entitlement.
+
+1. **Put the limit on each plan**, counted from membership:
+
+```bash
+bridge plan quota set <plan> --metric seats --limit N --policy hard --kind gauge --source membership
+```
+
+For "2 seats on Free, 5 on Pro": `bridge plan quota set free --metric seats --limit 2 --policy hard --kind gauge --source membership`, then the same for `pro` with `--limit 5`. (MCP: `set_plan_quota` with `metric: "seats"`, `policy: "hard"`, `kind: "gauge"`, `source: "membership"`.)
+
+2. **Check it where the invite starts.** Ask whether invites go through Bridge's built-in team page or the app's own invite handler:
+   - **Built-in team page**: `<bridge-team-panel seatsMetric="seats" />` (or `<bridge-team-user-list seatsMetric="seats" />`). Invite stops at the plan's limit and the line under it explains why, with the upgrade link. The count is re-read after every invite, removal, enable or disable.
+   - **The app's own invite handler**: `@RequireQuota('seats')` on that backend handler. It checks the seat limit and writes nothing, because Bridge counts the members.
+
+3. **Bridge's invite API does not refuse at the limit.** The check runs where the invite starts, which is why step 2 matters. Without `seatsMetric` the team page invites past the limit.
 
 ## Who is allowed to do what
 
@@ -91,6 +118,7 @@ Deletions need a token carrying the matching destructive privilege. A default `b
 - **Rendering the panel on a public route.** It needs an authenticated user.
 - **Expecting an NgModule.** These are standalone components.
 - **Assuming "team" means one fixed workspace.** A user can belong to several; the panel operates on the selected one.
+- **Selling seats without `seatsMetric`.** The seat limit is on the plan, but nothing checks it at invite time, so the panel invites past it. Pass `seatsMetric="seats"` (or put `@RequireQuota('seats')` on your own invite handler).
 
 ## Related guides
 

@@ -136,6 +136,58 @@ export class StatusComponent {
 
 While the channel is down, everything keeps working from the last known state: flags evaluate from cache, signals hold their last snapshot. On reconnect the server re-sends a full `session.snapshot`, so every scope updates atomically and nothing is missed.
 
+### When live updates are off
+
+`realtimeStatus` is just the state (`'idle'`, `'connecting'`, `'open'`, `'closed'`, `'unauthorized'`, `'degraded'`). `realtimeStatusDetail` adds why:
+
+| Field | Meaning |
+|-------|---------|
+| `state` | Same value as `realtimeStatus` |
+| `reason` | Machine-readable reason when live updates are not working, e.g. `expired` |
+| `side` | Whose move it is: `app` (your app's session/token handling), `config` (your Bridge settings — `apiBaseUrl`, `appId` or the app's configuration in Bridge — don't match), `bridge` (nothing to change in your app) or `network` (transient; the client is retrying) |
+| `retrying` | `true` while the client keeps trying on its own |
+| `hint` | One sentence naming the fix, when the client knows it (for example the origin to add in Bridge admin) |
+| `docsUrl` | Troubleshooting page for this `reason` |
+| `ref` | Support reference for this run of trouble |
+
+Every `reason` has an entry in [Live Updates Troubleshooting](/live-updates/troubleshooting/): what it means, whose side it is on, and the exact fix. The console message, `docsUrl` and the dev badge all link straight to it.
+
+`realtimeStatusDetail` is a signal on the `BridgeService` (and a standalone export):
+
+```typescript
+import { Component, inject } from '@angular/core';
+import { BridgeService } from '@nebulr-group/bridge-angular';
+
+@Component({
+  selector: 'app-live-status',
+  standalone: true,
+  template: `
+    @if (bridge.realtimeStatusDetail().state === 'unauthorized') {
+      <p>
+        Live updates are off ({{ bridge.realtimeStatusDetail().reason }}).
+        <a [href]="bridge.realtimeStatusDetail().docsUrl">Why?</a>
+      </p>
+    }
+  `,
+})
+export class LiveStatusComponent {
+  protected readonly bridge = inject(BridgeService);
+}
+```
+
+For side effects (logging, alerting) subscribe instead; it returns an unsubscribe function:
+
+```typescript
+import { inject } from '@angular/core';
+import { BridgeRuntimeService } from '@nebulr-group/bridge-angular';
+
+const stop = inject(BridgeRuntimeService).onStatus((status) => {
+  if (status.reason) console.warn('live updates:', status.reason, status.side);
+});
+```
+
+**Dev badge.** In development builds, `provideBridge()` mounts a small "Live updates off — why?" badge in the corner whenever live updates are refused (`unauthorized`), connected but receiving nothing (`degraded`), or still retrying after 30 seconds. It shows the reason, whose side it is, a docs link and the support reference, and can be dismissed until a different problem appears. It never renders in production builds. Turn it off in development too with `devBadge: false` in the config you pass to `provideBridge()`. The badge is exported as `RealtimeDevBadgeComponent` if you want to place it yourself.
+
 ### Relationship to the service-level surface
 
 The `BridgeService` and the original service surface (the `AuthService` signals `appConfig`, `subscription`, `profile`, `authState`, `isAuthenticated`, ...) are both supported and fed by the same internal state. The `BridgeService` is the newer, scoped way to read live platform state; `AuthService` remains the API for auth state and the classic checkout flow, covered in the [Auth](/auth/) and [How billing works](/billing/how-it-works/) guides. Use whichever fits; they don't conflict.
